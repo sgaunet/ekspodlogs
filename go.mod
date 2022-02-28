@@ -1,4 +1,4 @@
-module github.com/sgaunet/awslogs
+module github.com/sgaunet/ekspodlogs
 
 go 1.17
 
