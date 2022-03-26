@@ -66,6 +66,7 @@ func main() {
 	app := app.New(lastPeriodToWatch, cfg)
 	if err = app.PrintID(); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
 	}
 
 	// Option -lg to list loggroup : list and quit
@@ -79,6 +80,19 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Mandatory option : -l")
 		flag.PrintDefaults()
 		os.Exit(1)
+	}
+
+	if groupName == "" {
+		// No groupName specified, try to find it automatically
+		groupName, err = app.FindLogGroupAuto(cfg)
+		if groupName == "" {
+			fmt.Fprintln(os.Stderr, "Log group not found automatically (add option -g)")
+			os.Exit(1)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err.Error())
+			os.Exit(1)
+		}
 	}
 
 	if len(startDate) != 0 {

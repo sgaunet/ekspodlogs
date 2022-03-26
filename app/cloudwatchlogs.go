@@ -91,18 +91,18 @@ func (a *App) parseAllStreamsOfGroup(clientCloudwatchlogs *cloudwatchlogs.Client
 }
 
 // recursive function to list on stdout tge loggroup
-func (a *App) recurseListLogGroup(client *cloudwatchlogs.Client, NextToken string) bool {
+func (a *App) recurseListLogGroup(client *cloudwatchlogs.Client, NextToken string) (loggroups []string, err error) {
 	var params cloudwatchlogs.DescribeLogGroupsInput
 	if len(NextToken) != 0 {
 		params.NextToken = &NextToken
 	}
 	res, err := client.DescribeLogGroups(context.TODO(), &params)
 	if err != nil {
-		a.appLog.Errorln(err.Error())
-		os.Exit(1)
+		return loggroups, err
 	}
 	for _, i := range res.LogGroups {
-		fmt.Printf("%s\n", *i.LogGroupName)
+		// fmt.Printf("%s\n", *i.LogGroupName)
+		loggroups = append(loggroups, *i.LogGroupName)
 		// var glgfi cloudwatchlogs.GetLogGroupFieldsInput
 		// glgfi.LogGroupName = i.LogGroupName
 
@@ -113,9 +113,11 @@ func (a *App) recurseListLogGroup(client *cloudwatchlogs.Client, NextToken strin
 		// fmt.Println("")
 	}
 	if res.NextToken == nil {
-		return false
+		return loggroups, err
 	} else {
-		return a.recurseListLogGroup(client, *res.NextToken)
+		lg, err := a.recurseListLogGroup(client, *res.NextToken)
+		loggroups = append(loggroups, lg...)
+		return loggroups, err
 	}
 }
 

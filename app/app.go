@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -107,7 +108,32 @@ func (a *App) getEvents(context context.Context, groupName string, streamName st
 	return err
 }
 
-func (a *App) ListLogGroups(cfg aws.Config, NextToken string) {
+func (a *App) ListLogGroups(cfg aws.Config, NextToken string) error {
 	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
-	a.recurseListLogGroup(clientCloudwatchlogs, "")
+	loggroups, err := a.recurseListLogGroup(clientCloudwatchlogs, "")
+	for i := range loggroups {
+		a.appLog.Infoln(loggroups[i])
+	}
+	return err
+}
+
+func (a *App) FindLogGroupAuto(cfg aws.Config) (string, error) {
+	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
+	loggroups, err := a.recurseListLogGroup(clientCloudwatchlogs, "")
+	if err != nil {
+		return "", err
+	}
+
+	var filteredLoggroups []string
+	re := regexp.MustCompile(`/aws/containerinsights/.+/application`)
+	for _, loggroup := range loggroups {
+		if re.MatchString(loggroup) {
+			filteredLoggroups = append(filteredLoggroups, loggroup)
+		}
+	}
+
+	if len(filteredLoggroups) == 1 {
+		return filteredLoggroups[0], err
+	}
+	return "", err
 }
