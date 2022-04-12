@@ -96,14 +96,14 @@ func main() {
 	}
 
 	if len(startDate) != 0 {
-		startTime, err = time.Parse("2006-01-02 15:04", startDate)
+		startTime, err = time.Parse("2006-01-02 15:04:05", startDate)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot convert startDate: %v\n", err.Error())
 			os.Exit(1)
 		}
 	}
 	if len(endDate) != 0 {
-		endTime, err = time.Parse("2006-01-02 15:04", endDate)
+		endTime, err = time.Parse("2006-01-02 15:04:05", endDate)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot convert endDate: %v\n", err.Error())
 			os.Exit(1)
