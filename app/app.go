@@ -78,22 +78,31 @@ func (a *App) InitLog() {
 }
 
 // getEvents parse events of a stream and print results that do not match with any rules on stdout
-func (a *App) getEvents(context context.Context, groupName string, streamName string, client *cloudwatchlogs.Client, minTimeStamp int64, maxTimeStamp int64) error {
+func (a *App) getEvents(context context.Context, groupName string, streamName string, client *cloudwatchlogs.Client, minTimeStamp int64, maxTimeStamp int64, nextToken string) error {
 	input := cloudwatchlogs.GetLogEventsInput{
 		LogGroupName:  &groupName,
 		LogStreamName: &streamName,
 		EndTime:       &maxTimeStamp,
 		StartTime:     &minTimeStamp,
 	}
+	a.appLog.Debugf("maxTimeStamp=%v     //   %v\n", maxTimeStamp, time.Unix(maxTimeStamp/1000, 0))
+	a.appLog.Debugf("minTimeStamp=%v     //   %v\n", minTimeStamp, time.Unix(minTimeStamp/1000, 0))
 
+	if nextToken == "" {
+		input.NextToken = nil
+	} else {
+		input.NextToken = &nextToken
+	}
+
+	a.appLog.Infof("\n**Parse stream** : %s\n", streamName)
 	res, err := client.GetLogEvents(context, &input)
 	if err != nil {
 		return err
 	}
 
-	a.appLog.Infof("\n**Parse stream** : %s\n", streamName)
 	if len(res.Events) == 0 {
-		a.appLog.Infoln("NO event")
+		a.appLog.Debugln("NO event")
+		return nil
 	}
 	for _, k := range res.Events {
 		var lineOfLog fluentDockerLog
@@ -105,7 +114,11 @@ func (a *App) getEvents(context context.Context, groupName string, streamName st
 		timeT := time.Unix(*k.Timestamp/1000, 0)
 		a.appLog.Infof("%s -- %s -- %s ", timeT, lineOfLog.Kubernetes.ContainerName, lineOfLog.Log)
 	}
-	return err
+
+	if *res.NextForwardToken != nextToken {
+		return a.getEvents(context, groupName, streamName, client, minTimeStamp, maxTimeStamp, *res.NextBackwardToken)
+	}
+	return nil
 }
 
 func (a *App) ListLogGroups(cfg aws.Config, NextToken string) error {

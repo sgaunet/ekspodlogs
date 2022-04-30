@@ -69,11 +69,12 @@ func (a *App) parseAllStreamsOfGroup(clientCloudwatchlogs *cloudwatchlogs.Client
 			// No need to parse old logstream older than minTimeStamp
 			if *j.LastEventTimestamp < minTimeStamp {
 				stopToParseLogStream = true
-				a.appLog.Debugf("%v < %v\n", *j.LastEventTimestamp, maxTimeStamp)
+				a.appLog.Debugf("%v < %v\n", *j.LastEventTimestamp, minTimeStamp)
+				a.appLog.Debugf("%v < %v\n", time.Unix(*j.LastEventTimestamp/1000, 0), time.Unix(minTimeStamp/1000, 0))
 				a.appLog.Debugln("stop to parse, *j.LastEventTimestamp < minTimeStamp")
 				break
 			} else {
-				err = a.getEvents(context.TODO(), groupName, *j.LogStreamName, clientCloudwatchlogs, minTimeStamp, maxTimeStamp)
+				err = a.getEvents(context.TODO(), groupName, *j.LogStreamName, clientCloudwatchlogs, minTimeStamp, maxTimeStamp, "")
 				if err != nil {
 					a.appLog.Errorln(err.Error())
 				}
