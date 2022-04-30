@@ -44,7 +44,10 @@ $ ekspodlogs -lg -p dev
 ...
 ```
 
-So you must be specify the loggroup of pods to the -g option. If you want to find it, use the -lg option to list all loggroup (Don't forget, it's like /aws/containerinsights/**Name of your cluster**/application).
+So you must specify the loggroup of pods to the -g option. If you want to find it, use the -lg option to list all loggroup (Don't forget, it's like /aws/containerinsights/**Name of your cluster**/application).
+
+The -g option is optionnal, if you have only one loggroup named /aws/containerinsights/**Name of your cluster**/application, no need to specify it.
+
 Start date and end date allow to select logs that happened in this range of time. 
 Option -l allow to filter to the name of the logstream (which should be like the podname).
 
@@ -66,7 +69,7 @@ $ ekslpodlogs -g /aws/containerinsights/prod-EKS/application -p prod -l kubewatc
 
 # Debug
 
-Set env vairable DEBUGLEVEL to one of this value :
+Set env variable DEBUGLEVEL to one of this value :
 
 * error
 * warn
