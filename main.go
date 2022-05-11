@@ -38,16 +38,21 @@ func main() {
 	// Treat args
 	flag.BoolVar(&vOption, "v", false, "Get version")
 	flag.BoolVar(&listGroupOption, "lg", false, "List LogGroup")
-	flag.StringVar(&groupName, "g", "", "LogGroup to parse")
+	flag.StringVar(&groupName, "g", "", "LogGroup to parse (not mandatory if there is only one log group : /aws/containerinsights/<Name of your cluster>/application)")
 	flag.StringVar(&ssoProfile, "p", "", "Auth by SSO")
-	flag.StringVar(&startDate, "s", "", "Start date (YYYY-MM-DD HH:MM:SS)")
-	flag.StringVar(&endDate, "e", "", "End date  (YYYY-MM-DD HH:MM:SS)")
-	flag.StringVar(&logStream, "l", "", "LogStream to search")
+	flag.StringVar(&startDate, "s", "", "Start date (YYYY-MM-DD HH:MM:SS) - mandatory")
+	flag.StringVar(&endDate, "e", "", "End date  (YYYY-MM-DD HH:MM:SS) - mandatory")
+	flag.StringVar(&logStream, "l", "", "LogStream to search - mandatory")
 	flag.Parse()
 
 	if vOption {
 		printVersion()
 		os.Exit(0)
+	}
+
+	if len(startDate) == 0 || len(endDate) == 0 {
+		flag.PrintDefaults()
+		os.Exit(1)
 	}
 
 	// No profile selected
