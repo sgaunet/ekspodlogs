@@ -100,10 +100,10 @@ func (a *App) getEvents(context context.Context, groupName string, streamName st
 		return err
 	}
 
-	if len(res.Events) == 0 {
-		a.appLog.Debugln("NO event")
-		return nil
-	}
+	// if len(res.Events) == 0 {
+	// 	a.appLog.Debugln("NO event")
+	// 	return nil
+	// }
 	for _, k := range res.Events {
 		var lineOfLog fluentDockerLog
 		err := json.Unmarshal([]byte(*k.Message), &lineOfLog)
@@ -115,7 +115,10 @@ func (a *App) getEvents(context context.Context, groupName string, streamName st
 		a.appLog.Infof("%s -- %s -- %s ", timeT, lineOfLog.Kubernetes.ContainerName, lineOfLog.Log)
 	}
 
-	if *res.NextForwardToken != nextToken {
+	// fmt.Println(nextToken)
+	// fmt.Println(*res.NextForwardToken)
+	// fmt.Println(*res.NextBackwardToken)
+	if *res.NextBackwardToken != nextToken {
 		return a.getEvents(context, groupName, streamName, client, minTimeStamp, maxTimeStamp, *res.NextBackwardToken)
 	}
 	return nil
