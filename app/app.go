@@ -115,9 +115,9 @@ func (a *App) getEvents(context context.Context, groupName string, streamName st
 		a.appLog.Infof("%s -- %s -- %s ", timeT, lineOfLog.Kubernetes.ContainerName, lineOfLog.Log)
 	}
 
-	// fmt.Println(nextToken)
-	// fmt.Println(*res.NextForwardToken)
-	// fmt.Println(*res.NextBackwardToken)
+	a.appLog.Debugln("             nextToken=", nextToken)
+	a.appLog.Debugln(" *res.NextForwardToken=", *res.NextForwardToken)
+	a.appLog.Debugln("*res.NextBackwardToken=", *res.NextBackwardToken)
 	if *res.NextBackwardToken != nextToken {
 		return a.getEvents(context, groupName, streamName, client, minTimeStamp, maxTimeStamp, *res.NextBackwardToken)
 	}
