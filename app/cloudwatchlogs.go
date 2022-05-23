@@ -54,6 +54,7 @@ func (a *App) parseAllStreamsOfGroup(clientCloudwatchlogs *cloudwatchlogs.Client
 		paramsLogStream.NextToken = &nextToken
 	}
 	// https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs#Client.DescribeLogStreams
+	a.rateLimit.WaitIfLimitReached()
 	res2, err := clientCloudwatchlogs.DescribeLogStreams(context.TODO(), &paramsLogStream)
 	if err != nil {
 		return err
@@ -97,6 +98,7 @@ func (a *App) recurseListLogGroup(client *cloudwatchlogs.Client, NextToken strin
 	if len(NextToken) != 0 {
 		params.NextToken = &NextToken
 	}
+	a.rateLimit.WaitIfLimitReached()
 	res, err := client.DescribeLogGroups(context.TODO(), &params)
 	if err != nil {
 		return loggroups, err

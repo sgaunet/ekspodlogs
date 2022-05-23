@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.15.5
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.15.5
 	github.com/aws/aws-sdk-go-v2/service/sts v1.16.4
+	github.com/sgaunet/ratelimit v0.1.0
 	github.com/sirupsen/logrus v1.8.1
 )
 
