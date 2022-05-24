@@ -14,7 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const awsCloudWatchRateLimit = 20
+const awsCloudWatchRateLimit = 5
 
 type App struct {
 	lastPeriodToWatch int
