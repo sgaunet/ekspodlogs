@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"regexp"
 	"time"
@@ -83,12 +84,14 @@ func (a *App) InitLog() {
 }
 
 // getEvents parse events of a stream and print results that do not match with any rules on stdout
-func (a *App) getEvents(context context.Context, groupName string, streamName string, client *cloudwatchlogs.Client, minTimeStamp int64, maxTimeStamp int64, nextToken string) error {
+func (a *App) GetEvents(context context.Context, groupName string, streamName string, client *cloudwatchlogs.Client, minTimeStamp int64, maxTimeStamp int64, nextToken string) error {
+	startFromHead := true
 	input := cloudwatchlogs.GetLogEventsInput{
 		LogGroupName:  &groupName,
 		LogStreamName: &streamName,
 		EndTime:       &maxTimeStamp,
 		StartTime:     &minTimeStamp,
+		StartFromHead: &startFromHead,
 	}
 	a.appLog.Debugf("maxTimeStamp=%v     //   %v\n", maxTimeStamp, time.Unix(maxTimeStamp/1000, 0))
 	a.appLog.Debugf("minTimeStamp=%v     //   %v\n", minTimeStamp, time.Unix(minTimeStamp/1000, 0))
@@ -99,17 +102,13 @@ func (a *App) getEvents(context context.Context, groupName string, streamName st
 		input.NextToken = &nextToken
 	}
 
-	a.appLog.Infof("\n**Parse stream** : %s\n", streamName)
+	a.appLog.Debugf("\n**Parse stream** : %s\n", streamName)
 	a.rateLimit.WaitIfLimitReached()
 	res, err := client.GetLogEvents(context, &input)
 	if err != nil {
 		return err
 	}
 
-	// if len(res.Events) == 0 {
-	// 	a.appLog.Debugln("NO event")
-	// 	return nil
-	// }
 	for _, k := range res.Events {
 		var lineOfLog fluentDockerLog
 		err := json.Unmarshal([]byte(*k.Message), &lineOfLog)
@@ -118,14 +117,14 @@ func (a *App) getEvents(context context.Context, groupName string, streamName st
 			return err
 		}
 		timeT := time.Unix(*k.Timestamp/1000, 0)
-		a.appLog.Infof("%s -- %s -- %s ", timeT, lineOfLog.Kubernetes.ContainerName, lineOfLog.Log)
+		fmt.Printf("%s -- %s -- %s ", timeT, lineOfLog.Kubernetes.ContainerName, lineOfLog.Log)
 	}
 
 	a.appLog.Debugln("             nextToken=", nextToken)
 	a.appLog.Debugln(" *res.NextForwardToken=", *res.NextForwardToken)
 	a.appLog.Debugln("*res.NextBackwardToken=", *res.NextBackwardToken)
-	if *res.NextBackwardToken != nextToken {
-		return a.getEvents(context, groupName, streamName, client, minTimeStamp, maxTimeStamp, *res.NextBackwardToken)
+	if *res.NextForwardToken != nextToken {
+		return a.GetEvents(context, groupName, streamName, client, minTimeStamp, maxTimeStamp, *res.NextForwardToken)
 	}
 	return nil
 }

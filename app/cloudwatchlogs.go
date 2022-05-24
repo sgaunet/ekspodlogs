@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 )
 
 // Recursive function that will return if the groupName parameter has been found or not
@@ -24,7 +25,7 @@ func (a *App) findLogGroup(clientCloudwatchlogs *cloudwatchlogs.Client, groupNam
 		os.Exit(1)
 	}
 	for _, i := range res.LogGroups {
-		a.appLog.Infof("## Parse Log Group Name : %s\n", *i.LogGroupName)
+		a.appLog.Debugln("## Parse Log Group Name : %s", *i.LogGroupName)
 		if *i.LogGroupName == groupName {
 			return true
 		}
@@ -39,9 +40,10 @@ func (a *App) findLogGroup(clientCloudwatchlogs *cloudwatchlogs.Client, groupNam
 
 // Parse every events of every streams of a group
 // Recursive function
-func (a *App) parseAllStreamsOfGroup(clientCloudwatchlogs *cloudwatchlogs.Client, groupName string, logStream string, nextToken string, minTimeStamp int64, maxTimeStamp int64) error {
+func (a *App) parseAllStreamsOfGroup(clientCloudwatchlogs *cloudwatchlogs.Client, groupName string, logStream string, nextToken string, minTimeStamp int64, maxTimeStamp int64) ([]types.LogStream, error) {
 	var paramsLogStream cloudwatchlogs.DescribeLogStreamsInput
 	var stopToParseLogStream bool
+	var logStreams []types.LogStream
 	// Search logstreams of groupName
 	// Ordered by last event time
 	// descending
@@ -57,7 +59,7 @@ func (a *App) parseAllStreamsOfGroup(clientCloudwatchlogs *cloudwatchlogs.Client
 	a.rateLimit.WaitIfLimitReached()
 	res2, err := clientCloudwatchlogs.DescribeLogStreams(context.TODO(), &paramsLogStream)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// Loop over streams
 	for _, j := range res2.LogStreams {
@@ -74,22 +76,19 @@ func (a *App) parseAllStreamsOfGroup(clientCloudwatchlogs *cloudwatchlogs.Client
 				a.appLog.Debugf("%v < %v\n", time.Unix(*j.LastEventTimestamp/1000, 0), time.Unix(minTimeStamp/1000, 0))
 				a.appLog.Debugln("stop to parse, *j.LastEventTimestamp < minTimeStamp")
 				break
-			} else {
-				err = a.getEvents(context.TODO(), groupName, *j.LogStreamName, clientCloudwatchlogs, minTimeStamp, maxTimeStamp, "")
-				if err != nil {
-					a.appLog.Errorln(err.Error())
-				}
 			}
+			logStreams = append(logStreams, j)
 		}
 	}
 
 	if res2.NextToken != nil && !stopToParseLogStream {
-		err := a.parseAllStreamsOfGroup(clientCloudwatchlogs, groupName, logStream, *res2.NextToken, minTimeStamp, maxTimeStamp)
+		l, err := a.parseAllStreamsOfGroup(clientCloudwatchlogs, groupName, logStream, *res2.NextToken, minTimeStamp, maxTimeStamp)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		logStreams = append(logStreams, l...)
 	}
-	return err
+	return logStreams, err
 }
 
 // recursive function to list on stdout tge loggroup
@@ -125,18 +124,19 @@ func (a *App) recurseListLogGroup(client *cloudwatchlogs.Client, NextToken strin
 }
 
 // function that parses every streams of loggroup groupName
-func (a *App) FindLogStream(cfg aws.Config, groupName string, logStream string, startTime time.Time, endTime time.Time) error {
+func (a *App) FindLogStream(cfg aws.Config, groupName string, logStream string, startTime time.Time, endTime time.Time) ([]types.LogStream, error) {
 	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
 
 	doesGroupNameExists := a.findLogGroup(clientCloudwatchlogs, groupName, "")
 	if !doesGroupNameExists {
 		err := fmt.Errorf("GroupName %s not found", groupName)
 		a.appLog.Errorln(err.Error())
-		return err
+		return nil, err
 	}
 
 	minTimeStampInMs := startTime.Unix() * 1000
 	maxTimeStampInMs := endTime.Unix() * 1000
-	err := a.parseAllStreamsOfGroup(clientCloudwatchlogs, groupName, logStream, "", minTimeStampInMs, maxTimeStampInMs)
-	return err
+	logstreams, err := a.parseAllStreamsOfGroup(clientCloudwatchlogs, groupName, logStream, "", minTimeStampInMs, maxTimeStampInMs)
+	return logstreams, err
+	// return revertSliceOrder(logstreams), err
 }
