@@ -11,7 +11,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 )
 
 func checkErrorAndExitIfErr(err error) {
@@ -116,20 +115,9 @@ func main() {
 		}
 	}
 
-	logStreams, err := app.FindLogStream(cfg, groupName, logStream, startTime, endTime)
+	err = app.PrintEvents(cfg, groupName, logStream, startTime, endTime)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "logstream not found ? (%v)\n", err.Error())
+		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	for _, l := range logStreams {
-		clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
-		minTimeStampInMs := startTime.Unix() * 1000
-		maxTimeStampInMs := endTime.Unix() * 1000
-		err = app.GetEvents(context.Background(), groupName, *l.LogStreamName, clientCloudwatchlogs, minTimeStampInMs, maxTimeStampInMs, "")
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-	}
-
 }

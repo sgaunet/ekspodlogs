@@ -38,18 +38,15 @@ func New(lastPeriodToWatch int, cfg aws.Config) *App {
 func (a *App) PrintID() error {
 	client := sts.NewFromConfig(a.cfg)
 	identity, err := client.GetCallerIdentity(
-		context.TODO(),
+		context.Background(),
 		&sts.GetCallerIdentityInput{},
 	)
 	if err != nil {
 		return err
 	}
-	a.appLog.Infof(
-		"Account: %s\nUserID: %s\nARN: %s\n\n",
-		aws.ToString(identity.Account),
-		aws.ToString(identity.UserId),
-		aws.ToString(identity.Arn),
-	)
+	a.appLog.Debugf("Account: %s\n", aws.ToString(identity.Account))
+	a.appLog.Debugf("UserID: %s\n", aws.ToString(identity.UserId))
+	a.appLog.Debugf("ARN: %s\n", aws.ToString(identity.Arn))
 	return nil
 }
 
@@ -84,7 +81,7 @@ func (a *App) InitLog() {
 }
 
 // getEvents parse events of a stream and print results that do not match with any rules on stdout
-func (a *App) GetEvents(context context.Context, groupName string, streamName string, client *cloudwatchlogs.Client, minTimeStamp int64, maxTimeStamp int64, nextToken string) error {
+func (a *App) getEvents(context context.Context, groupName string, streamName string, client *cloudwatchlogs.Client, minTimeStamp int64, maxTimeStamp int64, nextToken string) error {
 	startFromHead := true
 	input := cloudwatchlogs.GetLogEventsInput{
 		LogGroupName:  &groupName,
@@ -124,7 +121,7 @@ func (a *App) GetEvents(context context.Context, groupName string, streamName st
 	a.appLog.Debugln(" *res.NextForwardToken=", *res.NextForwardToken)
 	a.appLog.Debugln("*res.NextBackwardToken=", *res.NextBackwardToken)
 	if *res.NextForwardToken != nextToken {
-		return a.GetEvents(context, groupName, streamName, client, minTimeStamp, maxTimeStamp, *res.NextForwardToken)
+		return a.getEvents(context, groupName, streamName, client, minTimeStamp, maxTimeStamp, *res.NextForwardToken)
 	}
 	return nil
 }
@@ -157,4 +154,22 @@ func (a *App) FindLogGroupAuto(cfg aws.Config) (string, error) {
 		return filteredLoggroups[0], err
 	}
 	return "", err
+}
+
+func (a *App) PrintEvents(cfg aws.Config, groupName string, logStream string, startTime time.Time, endTime time.Time) error {
+	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
+	minTimeStampInMs := startTime.Unix() * 1000
+	maxTimeStampInMs := endTime.Unix() * 1000
+
+	logStreams, err := a.findLogStream(clientCloudwatchlogs, groupName, logStream, minTimeStampInMs, maxTimeStampInMs)
+	if err != nil {
+		return err
+	}
+	for _, l := range logStreams {
+		err = a.getEvents(context.Background(), groupName, *l.LogStreamName, clientCloudwatchlogs, minTimeStampInMs, maxTimeStampInMs, "")
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

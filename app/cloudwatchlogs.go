@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 )
@@ -124,19 +123,15 @@ func (a *App) recurseListLogGroup(client *cloudwatchlogs.Client, NextToken strin
 }
 
 // function that parses every streams of loggroup groupName
-func (a *App) FindLogStream(cfg aws.Config, groupName string, logStream string, startTime time.Time, endTime time.Time) ([]types.LogStream, error) {
-	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
-
-	doesGroupNameExists := a.findLogGroup(clientCloudwatchlogs, groupName, "")
+func (a *App) findLogStream(client *cloudwatchlogs.Client, groupName string, logStream string, minTimeStampInMs int64, maxTimeStampInMs int64) ([]types.LogStream, error) {
+	doesGroupNameExists := a.findLogGroup(client, groupName, "")
 	if !doesGroupNameExists {
 		err := fmt.Errorf("GroupName %s not found", groupName)
 		a.appLog.Errorln(err.Error())
 		return nil, err
 	}
 
-	minTimeStampInMs := startTime.Unix() * 1000
-	maxTimeStampInMs := endTime.Unix() * 1000
-	logstreams, err := a.parseAllStreamsOfGroup(clientCloudwatchlogs, groupName, logStream, "", minTimeStampInMs, maxTimeStampInMs)
+	logstreams, err := a.parseAllStreamsOfGroup(client, groupName, logStream, "", minTimeStampInMs, maxTimeStampInMs)
 	return logstreams, err
 	// return revertSliceOrder(logstreams), err
 }
