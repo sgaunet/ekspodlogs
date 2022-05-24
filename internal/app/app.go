@@ -15,20 +15,23 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const awsCloudWatchRateLimit = 5
+const eventsRateLimit = 20
+const logGroupRateLimit = 5
 
 type App struct {
 	lastPeriodToWatch int
 	appLog            *logrus.Logger
 	cfg               aws.Config
-	rateLimit         *ratelimit.RateLimit
+	eventsRateLimit   *ratelimit.RateLimit
+	logGroupRateLimit *ratelimit.RateLimit
 }
 
 func New(lastPeriodToWatch int, cfg aws.Config) *App {
 	app := App{
 		lastPeriodToWatch: lastPeriodToWatch,
 		cfg:               cfg,
-		rateLimit:         ratelimit.New(1*time.Second, awsCloudWatchRateLimit),
+		eventsRateLimit:   ratelimit.New(1*time.Second, eventsRateLimit),
+		logGroupRateLimit: ratelimit.New(1*time.Second, logGroupRateLimit),
 	}
 	app.InitLog()
 	return &app
@@ -100,7 +103,7 @@ func (a *App) getEvents(context context.Context, groupName string, streamName st
 	}
 
 	a.appLog.Debugf("\n**Parse stream** : %s\n", streamName)
-	a.rateLimit.WaitIfLimitReached()
+	a.eventsRateLimit.WaitIfLimitReached()
 	res, err := client.GetLogEvents(context, &input)
 	if err != nil {
 		return err
