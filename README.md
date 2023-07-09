@@ -14,6 +14,8 @@ So the pods log parsed on the hosts are /var/log/containers/*.log
 And they are copied in the loggroup named /aws/containerinsights/**Name of your cluster**/application
 
 
+**A little comment, there is no tests, the initial development has been done in quick and dirty mode. Maybe, this problem will be adressed in the future but it's a side project with very very low priority so don't expect a lot of features or improvements.**
+
 ## Usage
 
 ```
