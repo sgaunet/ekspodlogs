@@ -27,11 +27,14 @@ type App struct {
 }
 
 func New(lastPeriodToWatch int, cfg aws.Config) *App {
+	ctx := context.Background()
+	er, _ := ratelimit.New(ctx, 1*time.Second, eventsRateLimit)
+	lgr, _ := ratelimit.New(ctx, 1*time.Second, logGroupRateLimit)
 	app := App{
 		lastPeriodToWatch: lastPeriodToWatch,
 		cfg:               cfg,
-		eventsRateLimit:   ratelimit.New(1*time.Second, eventsRateLimit),
-		logGroupRateLimit: ratelimit.New(1*time.Second, logGroupRateLimit),
+		eventsRateLimit:   er,
+		logGroupRateLimit: lgr,
 	}
 	app.InitLog()
 	return &app
@@ -175,4 +178,9 @@ func (a *App) PrintEvents(cfg aws.Config, groupName string, logStream string, st
 		}
 	}
 	return nil
+}
+
+func (a *App) StopRateLimits() {
+	a.eventsRateLimit.Stop()
+	a.logGroupRateLimit.Stop()
 }

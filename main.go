@@ -73,6 +73,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+	defer app.StopRateLimits()
 
 	// Option -lg to list loggroup : list and quit
 	if listGroupOption {
