@@ -5,23 +5,22 @@ vars:
 
 tasks:
   default:
+    desc: "List all tasks"
+    cmds:
+      - task -a
+
+  bin:
+    desc: "Build binary"
     cmds:
       - go mod tidy
       - CGO_ENABLED=0 go build .
-      - upx ./{{.BINFILE}}
-    # silent: true
-    sources:
-      - main.go
-      - go*
-      - internal/app/*.go
-    method: checksum
-    generates:
-      - "{{.BINFILE}}"
 
   snapshot:
+    desc: "Create snapshot"
     cmds:
       - GITLAB_TOKEN="" goreleaser --clean --snapshot
     
   release:
+    desc: "Create release"
     cmds:
       - GITLAB_TOKEN="" goreleaser --clean
