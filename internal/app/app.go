@@ -120,7 +120,7 @@ func (a *App) getEvents(context context.Context, groupName string, streamName st
 			return err
 		}
 		timeT := time.Unix(*k.Timestamp/1000, 0)
-		fmt.Printf("%s -- %s -- %s ", timeT, lineOfLog.Kubernetes.ContainerName, lineOfLog.Log)
+		fmt.Printf("%s -- %s -- %s\n", timeT, lineOfLog.Kubernetes.ContainerName, lineOfLog.Log)
 	}
 
 	a.appLog.Debugln("             nextToken=", nextToken)
