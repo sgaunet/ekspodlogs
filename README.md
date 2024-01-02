@@ -1,3 +1,6 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/sgaunet/ekspodlogs)](https://goreportcard.com/report/github.com/sgaunet/ekspodlogs)
+
+
 # ekspodlogs
 
 It's a little utility to print logs of pods in an EKS cluster (Amazon Web Services). The logs are parsed from cloudwatch, there is no interaction with kubernetes API.
