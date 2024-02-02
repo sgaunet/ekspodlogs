@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/aws/aws-sdk-go-v2 v1.24.1
 	github.com/aws/aws-sdk-go-v2/config v1.26.2
-	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.30.1
+	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.31.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.26.7
 	github.com/sgaunet/ratelimit v1.1.1
 	github.com/sirupsen/logrus v1.9.3
