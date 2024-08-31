@@ -1,5 +1,9 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/sgaunet/ekspodlogs)](https://goreportcard.com/report/github.com/sgaunet/ekspodlogs)
-
+[![GitHub release](https://img.shields.io/github/release/sgaunet/ekspodlogs.svg)](https://github.com/sgaunet/ekspodlogs/releases/latest)
+![GitHub Downloads](https://img.shields.io/github/downloads/sgaunet/ekspodlogs/total)
+[![Maintainability](https://api.codeclimate.com/v1/badges/76c5370f5d48ee2f04eb/maintainability)](https://codeclimate.com/github/sgaunet/ekspodlogs/maintainability)
+[![GoDoc](https://godoc.org/github.com/sgaunet/ekspodlogs?status.svg)](https://godoc.org/github.com/sgaunet/ekspodlogs)
+[![License](https://img.shields.io/github/license/sgaunet/ekspodlogs.svg)](LICENSE)
 
 # ekspodlogs
 
