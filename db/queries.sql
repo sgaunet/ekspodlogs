@@ -12,7 +12,8 @@ SELECT * FROM logs ORDER BY event_time DESC LIMIT ? OFFSET ?;
 SELECT COUNT(*) FROM logs;
 
 -- name: GetLogsByPod :many
-SELECT * FROM logs WHERE pod_name = ? ORDER BY event_time DESC LIMIT ? OFFSET ?;
-
--- name: CountLogsByPod :one
-SELECT COUNT(*) FROM logs WHERE pod_name = ?;
+SELECT * FROM logs 
+    WHERE pod_name = ?
+        AND event_time >= ?
+        AND event_time <= ? 
+    ORDER BY event_time DESC;
