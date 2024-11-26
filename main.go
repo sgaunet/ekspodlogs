@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/sgaunet/ekspodlogs/internal/app"
+	"github.com/sgaunet/ekspodlogs/pkg/storage/sqlite"
+	"github.com/sirupsen/logrus"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -35,6 +37,14 @@ func main() {
 	var startDate, endDate string
 	var startTime, endTime time.Time
 
+	// DB file
+	homeDir := os.Getenv("HOME")
+	if homeDir == "" {
+		logrus.Errorln("Cannot find HOME environment variable")
+		os.Exit(1)
+	}
+	dbFile := fmt.Sprintf("%s/.ekspodlogs.db", homeDir)
+
 	// Treat args
 	flag.BoolVar(&vOption, "v", false, "Get version")
 	flag.BoolVar(&listGroupOption, "lg", false, "List LogGroup")
@@ -55,6 +65,32 @@ func main() {
 		os.Exit(1)
 	}
 
+	ctx := context.Background()
+
+	// Check existence of DB file
+	_, err = os.Stat(dbFile)
+	if os.IsNotExist(err) {
+		logrus.Infoln("DB file not found, create it")
+		s, err := sqlite.NewStorage(dbFile)
+		if err != nil {
+			logrus.Errorln(err.Error())
+			os.Exit(1)
+		}
+		err = s.Init()
+		if err != nil {
+			logrus.Errorln(err.Error())
+			os.Exit(1)
+		}
+		s.Close()
+	}
+
+	s, err := sqlite.NewStorage(dbFile)
+	if err != nil {
+		logrus.Errorln(err.Error())
+		os.Exit(1)
+	}
+	s.Close()
+
 	// No profile selected
 	if len(ssoProfile) == 0 {
 		cfg, err = config.LoadDefaultConfig(context.TODO())
@@ -73,11 +109,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	defer app.StopRateLimits()
 
 	// Option -lg to list loggroup : list and quit
 	if listGroupOption {
-		app.ListLogGroups(cfg, "")
+		app.ListLogGroups(ctx, cfg, "")
 		os.Exit(0)
 	}
 
@@ -90,7 +125,7 @@ func main() {
 
 	if groupName == "" {
 		// No groupName specified, try to find it automatically
-		groupName, err = app.FindLogGroupAuto(cfg)
+		groupName, err = app.FindLogGroupAuto(ctx, cfg)
 		if groupName == "" {
 			fmt.Fprintln(os.Stderr, "Log group not found automatically (add option -g)")
 			os.Exit(1)
@@ -116,7 +151,7 @@ func main() {
 		}
 	}
 
-	err = app.PrintEvents(cfg, groupName, logStream, startTime, endTime)
+	err = app.PrintEvents(ctx, cfg, groupName, logStream, startTime, endTime)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
