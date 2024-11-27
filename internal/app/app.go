@@ -20,18 +20,16 @@ const eventsRateLimit = 20
 const logGroupRateLimit = 5
 
 type App struct {
-	lastPeriodToWatch int
 	appLog            *logrus.Logger
 	cfg               aws.Config
 	eventsRateLimit   *rate.Limiter
 	logGroupRateLimit *rate.Limiter
 }
 
-func New(lastPeriodToWatch int, cfg aws.Config) *App {
+func New(cfg aws.Config) *App {
 	er := rate.NewLimiter(rate.Every(1*time.Second), eventsRateLimit)
 	lgr := rate.NewLimiter(rate.Every(1*time.Second), logGroupRateLimit)
 	app := App{
-		lastPeriodToWatch: lastPeriodToWatch,
 		cfg:               cfg,
 		eventsRateLimit:   er,
 		logGroupRateLimit: lgr,

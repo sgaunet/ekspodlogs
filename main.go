@@ -33,7 +33,6 @@ func main() {
 	var vOption, listGroupOption bool
 	var logStream, groupName, ssoProfile string
 	var err error
-	var lastPeriodToWatch int
 	var startDate, endDate string
 	var startTime, endTime time.Time
 
@@ -104,7 +103,7 @@ func main() {
 		checkErrorAndExitIfErr(err)
 	}
 
-	app := app.New(lastPeriodToWatch, cfg)
+	app := app.New(cfg)
 	if err = app.PrintID(); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
