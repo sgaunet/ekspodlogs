@@ -111,7 +111,7 @@ func main() {
 
 	// Option -lg to list loggroup : list and quit
 	if listGroupOption {
-		app.ListLogGroups(ctx, cfg, "")
+		app.ListLogGroups(ctx, "")
 		os.Exit(0)
 	}
 
@@ -124,7 +124,7 @@ func main() {
 
 	if groupName == "" {
 		// No groupName specified, try to find it automatically
-		groupName, err = app.FindLogGroupAuto(ctx, cfg)
+		groupName, err = app.FindLogGroupAuto(ctx)
 		if groupName == "" {
 			fmt.Fprintln(os.Stderr, "Log group not found automatically (add option -g)")
 			os.Exit(1)
@@ -150,7 +150,7 @@ func main() {
 		}
 	}
 
-	err = app.PrintEvents(ctx, cfg, groupName, logStream, startTime, endTime)
+	err = app.PrintEvents(ctx, groupName, logStream, startTime, endTime)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)

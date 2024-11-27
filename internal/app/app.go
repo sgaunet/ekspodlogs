@@ -137,7 +137,7 @@ func (a *App) getEvents(ctx context.Context, groupName string, streamName string
 }
 
 // ListLogGroup is a recursive function to list all log groups
-func (a *App) ListLogGroups(ctx context.Context, cfg aws.Config, NextToken string) error {
+func (a *App) ListLogGroups(ctx context.Context, NextToken string) error {
 	loggroups, err := a.recurseListLogGroup(ctx, a.clientCloudwatchlogs, "")
 	for i := range loggroups {
 		a.appLog.Infoln(loggroups[i])
@@ -146,7 +146,7 @@ func (a *App) ListLogGroups(ctx context.Context, cfg aws.Config, NextToken strin
 }
 
 // FindLogGroupAuto finds the EKS log group automatically
-func (a *App) FindLogGroupAuto(ctx context.Context, cfg aws.Config) (string, error) {
+func (a *App) FindLogGroupAuto(ctx context.Context) (string, error) {
 	loggroups, err := a.recurseListLogGroup(ctx, a.clientCloudwatchlogs, "")
 	if err != nil {
 		return "", err
@@ -167,7 +167,7 @@ func (a *App) FindLogGroupAuto(ctx context.Context, cfg aws.Config) (string, err
 }
 
 // PrintEvents prints events of a log group
-func (a *App) PrintEvents(ctx context.Context, cfg aws.Config, groupName string, logStream string, startTime time.Time, endTime time.Time) error {
+func (a *App) PrintEvents(ctx context.Context, groupName string, logStream string, startTime time.Time, endTime time.Time) error {
 	minTimeStampInMs := startTime.Unix() * 1000
 	maxTimeStampInMs := endTime.Unix() * 1000
 
