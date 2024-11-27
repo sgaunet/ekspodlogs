@@ -16,8 +16,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const eventsRateLimit = 20
-const logGroupRateLimit = 5
+// quota for AWS API: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/cloudwatch_limits_cwl.html
+const eventsRateLimit = 30
+const logGroupRateLimit = 10
 
 // App is the main structure of the application
 type App struct {
