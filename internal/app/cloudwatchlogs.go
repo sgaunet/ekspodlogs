@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
+	"github.com/golang-module/carbon"
 )
 
 // Recursive function that will return if the groupName parameter has been found or not
@@ -39,7 +40,7 @@ func (a *App) findLogGroup(clientCloudwatchlogs *cloudwatchlogs.Client, groupNam
 
 // Parse every events of every streams of a group
 // Recursive function
-func (a *App) parseAllStreamsOfGroup(clientCloudwatchlogs *cloudwatchlogs.Client, groupName string, logStream string, nextToken string, minTimeStamp int64, maxTimeStamp int64) ([]types.LogStream, error) {
+func (a *App) parseAllStreamsOfGroup(ctx context.Context, clientCloudwatchlogs *cloudwatchlogs.Client, groupName string, logStream string, nextToken string, minTimeStamp int64, maxTimeStamp int64) ([]types.LogStream, error) {
 	var paramsLogStream cloudwatchlogs.DescribeLogStreamsInput
 	var stopToParseLogStream bool
 	var logStreams []types.LogStream
@@ -55,33 +56,35 @@ func (a *App) parseAllStreamsOfGroup(clientCloudwatchlogs *cloudwatchlogs.Client
 		paramsLogStream.NextToken = &nextToken
 	}
 	// https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs#Client.DescribeLogStreams
-	a.logGroupRateLimit.WaitIfLimitReached()
+	a.logGroupRateLimit.Wait(ctx)
 	res2, err := clientCloudwatchlogs.DescribeLogStreams(context.TODO(), &paramsLogStream)
 	if err != nil {
 		return nil, err
 	}
 	// Loop over streams
-	for _, j := range res2.LogStreams {
+	for idx, j := range res2.LogStreams {
+		fmt.Println(idx, *j.LogStreamName)
 		if strings.Contains(*j.LogStreamName, logStream) {
-			a.appLog.Debugln("Stream Name: ", *j.LogStreamName)
-			a.appLog.Debugln("LasteventTimeStamp: ", *j.LastEventTimestamp)
 			tm := time.Unix(*j.LastEventTimestamp/1000, 0) // aws timestamp are in ms
+			// convert tm to date
+			lastEvent := carbon.CreateFromTimestamp(*j.LastEventTimestamp / 1000)
+			a.appLog.Debugf("Stream Name: %s\n", *j.LogStreamName)
+			a.appLog.Debugf("LasteventTimeStamp: %d  (%s)\n", *j.LastEventTimestamp, lastEvent.ToDateTimeString())
 			a.appLog.Debugf("Parse stream : %s (Last event %v)\n", *j.LogStreamName, tm)
-
-			// No need to parse old logstream older than minTimeStamp
-			if *j.LastEventTimestamp < minTimeStamp {
-				stopToParseLogStream = true
-				a.appLog.Debugf("%v < %v\n", *j.LastEventTimestamp, minTimeStamp)
-				a.appLog.Debugf("%v < %v\n", time.Unix(*j.LastEventTimestamp/1000, 0), time.Unix(minTimeStamp/1000, 0))
-				a.appLog.Debugln("stop to parse, *j.LastEventTimestamp < minTimeStamp")
-				break
-			}
 			logStreams = append(logStreams, j)
+		}
+		// No need to parse old logstream older than minTimeStamp
+		if *j.LastEventTimestamp < minTimeStamp {
+			stopToParseLogStream = true
+			a.appLog.Debugf("%v < %v\n", *j.LastEventTimestamp, minTimeStamp)
+			a.appLog.Debugf("%v < %v\n", time.Unix(*j.LastEventTimestamp/1000, 0), time.Unix(minTimeStamp/1000, 0))
+			a.appLog.Debugln("stop to parse, *j.LastEventTimestamp < minTimeStamp")
+			break
 		}
 	}
 
 	if res2.NextToken != nil && !stopToParseLogStream {
-		l, err := a.parseAllStreamsOfGroup(clientCloudwatchlogs, groupName, logStream, *res2.NextToken, minTimeStamp, maxTimeStamp)
+		l, err := a.parseAllStreamsOfGroup(ctx, clientCloudwatchlogs, groupName, logStream, *res2.NextToken, minTimeStamp, maxTimeStamp)
 		if err != nil {
 			return nil, err
 		}
@@ -91,12 +94,12 @@ func (a *App) parseAllStreamsOfGroup(clientCloudwatchlogs *cloudwatchlogs.Client
 }
 
 // recursive function to list on stdout tge loggroup
-func (a *App) recurseListLogGroup(client *cloudwatchlogs.Client, NextToken string) (loggroups []string, err error) {
+func (a *App) recurseListLogGroup(ctx context.Context, client *cloudwatchlogs.Client, NextToken string) (loggroups []string, err error) {
 	var params cloudwatchlogs.DescribeLogGroupsInput
 	if len(NextToken) != 0 {
 		params.NextToken = &NextToken
 	}
-	a.logGroupRateLimit.WaitIfLimitReached()
+	a.logGroupRateLimit.Wait(ctx)
 	res, err := client.DescribeLogGroups(context.TODO(), &params)
 	if err != nil {
 		return loggroups, err
@@ -116,14 +119,14 @@ func (a *App) recurseListLogGroup(client *cloudwatchlogs.Client, NextToken strin
 	if res.NextToken == nil {
 		return loggroups, err
 	} else {
-		lg, err := a.recurseListLogGroup(client, *res.NextToken)
+		lg, err := a.recurseListLogGroup(ctx, client, *res.NextToken)
 		loggroups = append(loggroups, lg...)
 		return loggroups, err
 	}
 }
 
 // function that parses every streams of loggroup groupName
-func (a *App) findLogStream(client *cloudwatchlogs.Client, groupName string, logStream string, minTimeStampInMs int64, maxTimeStampInMs int64) ([]types.LogStream, error) {
+func (a *App) findLogStream(ctx context.Context, client *cloudwatchlogs.Client, groupName string, logStream string, minTimeStampInMs int64, maxTimeStampInMs int64) ([]types.LogStream, error) {
 	doesGroupNameExists := a.findLogGroup(client, groupName, "")
 	if !doesGroupNameExists {
 		err := fmt.Errorf("GroupName %s not found", groupName)
@@ -131,7 +134,7 @@ func (a *App) findLogStream(client *cloudwatchlogs.Client, groupName string, log
 		return nil, err
 	}
 
-	logstreams, err := a.parseAllStreamsOfGroup(client, groupName, logStream, "", minTimeStampInMs, maxTimeStampInMs)
+	logstreams, err := a.parseAllStreamsOfGroup(ctx, client, groupName, logStream, "", minTimeStampInMs, maxTimeStampInMs)
 	return logstreams, err
 	// return revertSliceOrder(logstreams), err
 }
