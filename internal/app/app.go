@@ -19,6 +19,7 @@ import (
 const eventsRateLimit = 20
 const logGroupRateLimit = 5
 
+// App is the main structure of the application
 type App struct {
 	appLog            *logrus.Logger
 	cfg               aws.Config
@@ -26,6 +27,7 @@ type App struct {
 	logGroupRateLimit *rate.Limiter
 }
 
+// New creates a new App
 func New(cfg aws.Config) *App {
 	er := rate.NewLimiter(rate.Every(1*time.Second), eventsRateLimit)
 	lgr := rate.NewLimiter(rate.Every(1*time.Second), logGroupRateLimit)
@@ -38,7 +40,7 @@ func New(cfg aws.Config) *App {
 	return &app
 }
 
-// print AWS identity
+// PrintID prints AWS identity only for debug purpose
 func (a *App) PrintID() error {
 	client := sts.NewFromConfig(a.cfg)
 	identity, err := client.GetCallerIdentity(
@@ -54,6 +56,7 @@ func (a *App) PrintID() error {
 	return nil
 }
 
+// InitLog initializes the logger
 func (a *App) InitLog() {
 	appLog := logrus.New()
 	// Log as JSON instead of the default ASCII formatter.
@@ -130,6 +133,7 @@ func (a *App) getEvents(ctx context.Context, groupName string, streamName string
 	return nil
 }
 
+// ListLogGroup is a recursive function to list all log groups
 func (a *App) ListLogGroups(ctx context.Context, cfg aws.Config, NextToken string) error {
 	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
 	loggroups, err := a.recurseListLogGroup(ctx, clientCloudwatchlogs, "")
@@ -139,6 +143,7 @@ func (a *App) ListLogGroups(ctx context.Context, cfg aws.Config, NextToken strin
 	return err
 }
 
+// FindLogGroupAuto finds the EKS log group automatically
 func (a *App) FindLogGroupAuto(ctx context.Context, cfg aws.Config) (string, error) {
 	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
 	loggroups, err := a.recurseListLogGroup(ctx, clientCloudwatchlogs, "")
@@ -160,6 +165,7 @@ func (a *App) FindLogGroupAuto(ctx context.Context, cfg aws.Config) (string, err
 	return "", err
 }
 
+// PrintEvents prints events of a log group
 func (a *App) PrintEvents(ctx context.Context, cfg aws.Config, groupName string, logStream string, startTime time.Time, endTime time.Time) error {
 	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
 	minTimeStampInMs := startTime.Unix() * 1000
