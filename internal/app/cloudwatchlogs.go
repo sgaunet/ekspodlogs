@@ -13,19 +13,19 @@ import (
 )
 
 // Recursive function that will return if the groupName parameter has been found or not
-func (a *App) findLogGroup(clientCloudwatchlogs *cloudwatchlogs.Client, groupName string, NextToken string) bool {
+func (a *App) findLogGroup(groupName string, NextToken string) bool {
 	var params cloudwatchlogs.DescribeLogGroupsInput
 
 	if len(NextToken) != 0 {
 		params.NextToken = &NextToken
 	}
-	res, err := clientCloudwatchlogs.DescribeLogGroups(context.TODO(), &params)
+	res, err := a.clientCloudwatchlogs.DescribeLogGroups(context.TODO(), &params)
 	if err != nil {
 		a.appLog.Errorln(err.Error())
 		os.Exit(1)
 	}
 	for _, i := range res.LogGroups {
-		a.appLog.Debugln("## Parse Log Group Name : %s", *i.LogGroupName)
+		a.appLog.Debugf("## Parse Log Group Name : %s\n", *i.LogGroupName)
 		if *i.LogGroupName == groupName {
 			return true
 		}
@@ -34,13 +34,13 @@ func (a *App) findLogGroup(clientCloudwatchlogs *cloudwatchlogs.Client, groupNam
 		// No token given, end of potential recursive call to parse the list of loggroups
 		return false
 	} else {
-		return a.findLogGroup(clientCloudwatchlogs, groupName, *res.NextToken)
+		return a.findLogGroup(groupName, *res.NextToken)
 	}
 }
 
 // Parse every events of every streams of a group
 // Recursive function
-func (a *App) parseAllStreamsOfGroup(ctx context.Context, clientCloudwatchlogs *cloudwatchlogs.Client, groupName string, logStream string, nextToken string, minTimeStamp int64, maxTimeStamp int64) ([]types.LogStream, error) {
+func (a *App) parseAllStreamsOfGroup(ctx context.Context, groupName string, logStream string, nextToken string, minTimeStamp int64, maxTimeStamp int64) ([]types.LogStream, error) {
 	var paramsLogStream cloudwatchlogs.DescribeLogStreamsInput
 	var stopToParseLogStream bool
 	var logStreams []types.LogStream
@@ -57,7 +57,7 @@ func (a *App) parseAllStreamsOfGroup(ctx context.Context, clientCloudwatchlogs *
 	}
 	// https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs#Client.DescribeLogStreams
 	a.logGroupRateLimit.Wait(ctx)
-	res2, err := clientCloudwatchlogs.DescribeLogStreams(context.TODO(), &paramsLogStream)
+	res2, err := a.clientCloudwatchlogs.DescribeLogStreams(context.TODO(), &paramsLogStream)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (a *App) parseAllStreamsOfGroup(ctx context.Context, clientCloudwatchlogs *
 	}
 
 	if res2.NextToken != nil && !stopToParseLogStream {
-		l, err := a.parseAllStreamsOfGroup(ctx, clientCloudwatchlogs, groupName, logStream, *res2.NextToken, minTimeStamp, maxTimeStamp)
+		l, err := a.parseAllStreamsOfGroup(ctx, groupName, logStream, *res2.NextToken, minTimeStamp, maxTimeStamp)
 		if err != nil {
 			return nil, err
 		}
@@ -126,15 +126,15 @@ func (a *App) recurseListLogGroup(ctx context.Context, client *cloudwatchlogs.Cl
 }
 
 // function that parses every streams of loggroup groupName
-func (a *App) findLogStream(ctx context.Context, client *cloudwatchlogs.Client, groupName string, logStream string, minTimeStampInMs int64, maxTimeStampInMs int64) ([]types.LogStream, error) {
-	doesGroupNameExists := a.findLogGroup(client, groupName, "")
+func (a *App) findLogStream(ctx context.Context, groupName string, logStream string, minTimeStampInMs int64, maxTimeStampInMs int64) ([]types.LogStream, error) {
+	doesGroupNameExists := a.findLogGroup(groupName, "")
 	if !doesGroupNameExists {
 		err := fmt.Errorf("GroupName %s not found", groupName)
 		a.appLog.Errorln(err.Error())
 		return nil, err
 	}
 
-	logstreams, err := a.parseAllStreamsOfGroup(ctx, client, groupName, logStream, "", minTimeStampInMs, maxTimeStampInMs)
+	logstreams, err := a.parseAllStreamsOfGroup(ctx, groupName, logStream, "", minTimeStampInMs, maxTimeStampInMs)
 	return logstreams, err
 	// return revertSliceOrder(logstreams), err
 }

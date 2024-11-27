@@ -21,20 +21,23 @@ const logGroupRateLimit = 5
 
 // App is the main structure of the application
 type App struct {
-	appLog            *logrus.Logger
-	cfg               aws.Config
-	eventsRateLimit   *rate.Limiter
-	logGroupRateLimit *rate.Limiter
+	appLog               *logrus.Logger
+	cfg                  aws.Config
+	eventsRateLimit      *rate.Limiter
+	logGroupRateLimit    *rate.Limiter
+	clientCloudwatchlogs *cloudwatchlogs.Client
 }
 
 // New creates a new App
 func New(cfg aws.Config) *App {
 	er := rate.NewLimiter(rate.Every(1*time.Second), eventsRateLimit)
 	lgr := rate.NewLimiter(rate.Every(1*time.Second), logGroupRateLimit)
+	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
 	app := App{
-		cfg:               cfg,
-		eventsRateLimit:   er,
-		logGroupRateLimit: lgr,
+		cfg:                  cfg,
+		eventsRateLimit:      er,
+		logGroupRateLimit:    lgr,
+		clientCloudwatchlogs: clientCloudwatchlogs,
 	}
 	app.InitLog()
 	return &app
@@ -88,7 +91,7 @@ func (a *App) InitLog() {
 }
 
 // getEvents parse events of a stream and print results that do not match with any rules on stdout
-func (a *App) getEvents(ctx context.Context, groupName string, streamName string, client *cloudwatchlogs.Client, minTimeStamp int64, maxTimeStamp int64, nextToken string) error {
+func (a *App) getEvents(ctx context.Context, groupName string, streamName string, minTimeStamp int64, maxTimeStamp int64, nextToken string) error {
 	startFromHead := true
 	input := cloudwatchlogs.GetLogEventsInput{
 		LogGroupName:  &groupName,
@@ -108,7 +111,7 @@ func (a *App) getEvents(ctx context.Context, groupName string, streamName string
 
 	a.appLog.Debugf("\n**Parse stream** : %s\n", streamName)
 	a.eventsRateLimit.Wait(ctx)
-	res, err := client.GetLogEvents(ctx, &input)
+	res, err := a.clientCloudwatchlogs.GetLogEvents(ctx, &input)
 	if err != nil {
 		return err
 	}
@@ -128,15 +131,14 @@ func (a *App) getEvents(ctx context.Context, groupName string, streamName string
 	a.appLog.Debugln(" *res.NextForwardToken=", *res.NextForwardToken)
 	a.appLog.Debugln("*res.NextBackwardToken=", *res.NextBackwardToken)
 	if *res.NextForwardToken != nextToken {
-		return a.getEvents(ctx, groupName, streamName, client, minTimeStamp, maxTimeStamp, *res.NextForwardToken)
+		return a.getEvents(ctx, groupName, streamName, minTimeStamp, maxTimeStamp, *res.NextForwardToken)
 	}
 	return nil
 }
 
 // ListLogGroup is a recursive function to list all log groups
 func (a *App) ListLogGroups(ctx context.Context, cfg aws.Config, NextToken string) error {
-	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
-	loggroups, err := a.recurseListLogGroup(ctx, clientCloudwatchlogs, "")
+	loggroups, err := a.recurseListLogGroup(ctx, a.clientCloudwatchlogs, "")
 	for i := range loggroups {
 		a.appLog.Infoln(loggroups[i])
 	}
@@ -145,8 +147,7 @@ func (a *App) ListLogGroups(ctx context.Context, cfg aws.Config, NextToken strin
 
 // FindLogGroupAuto finds the EKS log group automatically
 func (a *App) FindLogGroupAuto(ctx context.Context, cfg aws.Config) (string, error) {
-	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
-	loggroups, err := a.recurseListLogGroup(ctx, clientCloudwatchlogs, "")
+	loggroups, err := a.recurseListLogGroup(ctx, a.clientCloudwatchlogs, "")
 	if err != nil {
 		return "", err
 	}
@@ -167,17 +168,16 @@ func (a *App) FindLogGroupAuto(ctx context.Context, cfg aws.Config) (string, err
 
 // PrintEvents prints events of a log group
 func (a *App) PrintEvents(ctx context.Context, cfg aws.Config, groupName string, logStream string, startTime time.Time, endTime time.Time) error {
-	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
 	minTimeStampInMs := startTime.Unix() * 1000
 	maxTimeStampInMs := endTime.Unix() * 1000
 
-	logStreams, err := a.findLogStream(ctx, clientCloudwatchlogs, groupName, logStream, minTimeStampInMs, maxTimeStampInMs)
+	logStreams, err := a.findLogStream(ctx, groupName, logStream, minTimeStampInMs, maxTimeStampInMs)
 	if err != nil {
 		return err
 	}
 	for _, l := range logStreams {
 		// store events in sqlite
-		err = a.getEvents(context.Background(), groupName, *l.LogStreamName, clientCloudwatchlogs, minTimeStampInMs, maxTimeStampInMs, "")
+		err = a.getEvents(ctx, groupName, *l.LogStreamName, minTimeStampInMs, maxTimeStampInMs, "")
 		if err != nil {
 			return err
 		}
