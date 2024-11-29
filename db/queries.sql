@@ -6,7 +6,7 @@ DELETE FROM logs;
 INSERT INTO logs (event_time, namespace_name, pod_name, container_name, log) VALUES (?, ?, ?, ?, ?);
 
 -- name: GetLogs :many
-SELECT * FROM logs ORDER BY event_time DESC LIMIT ? OFFSET ?;
+SELECT * FROM logs WHERE event_time >= sqlc.arg(begindate) and event_time <= sqlc.arg(enddate) ORDER BY event_time;
 
 -- name: CountLogs :one
 SELECT COUNT(*) FROM logs;

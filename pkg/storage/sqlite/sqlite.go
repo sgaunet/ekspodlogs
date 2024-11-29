@@ -10,6 +10,7 @@ import (
 
 	"github.com/amacneil/dbmate/v2/pkg/dbmate"
 	_ "github.com/amacneil/dbmate/v2/pkg/driver/sqlite"
+	"github.com/dromara/carbon/v2"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/sgaunet/ekspodlogs/internal/database"
 )
@@ -85,5 +86,12 @@ func (s *Storage) GetLogsByPod(ctx context.Context, podName string, beginDate, e
 		PodName:     podName,
 		EventTime:   beginDate,
 		EventTime_2: endDate,
+	})
+}
+
+func (s *Storage) GetLogs(ctx context.Context, beginDate carbon.Carbon, endDate carbon.Carbon) ([]database.Log, error) {
+	return s.queries.GetLogs(ctx, database.GetLogsParams{
+		Begindate: beginDate.StdTime(),
+		Enddate:   endDate.StdTime(),
 	})
 }

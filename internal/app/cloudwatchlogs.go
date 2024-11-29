@@ -9,7 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
-	"github.com/golang-module/carbon"
+	"github.com/dromara/carbon/v2"
 )
 
 // Recursive function that will return if the groupName parameter has been found or not
@@ -56,8 +56,14 @@ func (a *App) parseAllStreamsOfGroup(ctx context.Context, groupName string, logS
 		paramsLogStream.NextToken = &nextToken
 	}
 	// https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs#Client.DescribeLogStreams
+	now := time.Now()
+	fmt.Println("Waiting for rate limit")
 	a.logGroupRateLimit.Wait(ctx)
+	fmt.Println("Duration:", time.Since(now))
+
+	fmt.Println("Calling DescribeLogStreams")
 	res2, err := a.clientCloudwatchlogs.DescribeLogStreams(context.TODO(), &paramsLogStream)
+	fmt.Println("Called DescribeLogStreams")
 	if err != nil {
 		return nil, err
 	}

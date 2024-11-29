@@ -13,6 +13,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/dromara/carbon/v2"
+	"github.com/sgaunet/ekspodlogs/internal/database"
+	"github.com/sgaunet/ekspodlogs/pkg/storage/sqlite"
 	"github.com/sirupsen/logrus"
 )
 
@@ -27,10 +30,11 @@ type App struct {
 	eventsRateLimit      *rate.Limiter
 	logGroupRateLimit    *rate.Limiter
 	clientCloudwatchlogs *cloudwatchlogs.Client
+	queries              *sqlite.Storage
 }
 
 // New creates a new App
-func New(cfg aws.Config) *App {
+func New(cfg aws.Config, db *sqlite.Storage) *App {
 	er := rate.NewLimiter(rate.Every(1*time.Second), eventsRateLimit)
 	lgr := rate.NewLimiter(rate.Every(1*time.Second), logGroupRateLimit)
 	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
@@ -39,6 +43,7 @@ func New(cfg aws.Config) *App {
 		eventsRateLimit:      er,
 		logGroupRateLimit:    lgr,
 		clientCloudwatchlogs: clientCloudwatchlogs,
+		queries:              db,
 	}
 	app.InitLog()
 	return &app
@@ -126,6 +131,10 @@ func (a *App) getEvents(ctx context.Context, groupName string, streamName string
 		}
 		timeT := time.Unix(*k.Timestamp/1000, 0)
 		fmt.Printf("%s -- %s -- %s\n", timeT, lineOfLog.Kubernetes.ContainerName, lineOfLog.Log)
+		err = a.queries.AddLog(ctx, timeT, lineOfLog.Kubernetes.PodName, lineOfLog.Kubernetes.ContainerName, lineOfLog.Kubernetes.NamespaceName, lineOfLog.Log)
+		if err != nil {
+			return err
+		}
 	}
 
 	a.appLog.Debugln("             nextToken=", nextToken)
@@ -177,6 +186,7 @@ func (a *App) PrintEvents(ctx context.Context, groupName string, logStream strin
 		return err
 	}
 	for _, l := range logStreams {
+		fmt.Println("LogStreamName:", *l.LogStreamName)
 		// store events in sqlite
 		err = a.getEvents(ctx, groupName, *l.LogStreamName, minTimeStampInMs, maxTimeStampInMs, "")
 		if err != nil {
@@ -184,4 +194,15 @@ func (a *App) PrintEvents(ctx context.Context, groupName string, logStream strin
 		}
 	}
 	return nil
+}
+
+// GetEvents returns events occured between two dates
+// Use
+func (a *App) GetEvents(ctx context.Context, groupName string, beginDate carbon.Carbon, endDate carbon.Carbon) ([]database.Log, error) {
+
+	res, err := a.queries.GetLogs(ctx, beginDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
 }
