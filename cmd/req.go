@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/dromara/carbon/v2"
 	"github.com/sgaunet/ekspodlogs/internal/app"
 	"github.com/sgaunet/ekspodlogs/pkg/storage/sqlite"
 	"github.com/sirupsen/logrus"
@@ -28,14 +27,9 @@ var reqCmd = &cobra.Command{
 		fmt.Println("begin:", beginDate)
 		fmt.Println("end:", endDate)
 
-		b := carbon.Parse(beginDate)
-		if b.Error != nil {
-			fmt.Fprintln(os.Stderr, "Invalid begin date")
-			os.Exit(1)
-		}
-		e := carbon.Parse(endDate)
-		if e.Error != nil {
-			fmt.Fprintln(os.Stderr, "Invalid end date")
+		b, e, err := ConvertTimeToCarbon(beginDate, endDate)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
 		fmt.Println("begin:", b)
