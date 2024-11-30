@@ -83,17 +83,21 @@ func (s *Storage) AddLog(ctx context.Context, profile string, loggroup string, e
 	})
 }
 
-func (s *Storage) GetLogsByPod(ctx context.Context, podName string, beginDate, endDate time.Time) ([]database.Log, error) {
-	return s.queries.GetLogsByPod(ctx, database.GetLogsByPodParams{
-		PodName:     podName,
-		EventTime:   beginDate,
-		EventTime_2: endDate,
+func (s *Storage) GetLogsOfPod(ctx context.Context, profile string, logGroup string, podName string, beginDate, endDate time.Time) ([]database.Log, error) {
+	return s.queries.GetLogsOfPod(ctx, database.GetLogsOfPodParams{
+		Begindate: beginDate,
+		Enddate:   endDate,
+		Loggroup:  logGroup,
+		Profile:   profile,
+		PodName:   podName,
 	})
 }
 
-func (s *Storage) GetLogs(ctx context.Context, beginDate carbon.Carbon, endDate carbon.Carbon) ([]database.Log, error) {
+func (s *Storage) GetLogs(ctx context.Context, beginDate carbon.Carbon, endDate carbon.Carbon, logGroup string, profile string) ([]database.Log, error) {
 	return s.queries.GetLogs(ctx, database.GetLogsParams{
 		Begindate: beginDate.StdTime(),
 		Enddate:   endDate.StdTime(),
+		Loggroup:  logGroup,
+		Profile:   profile,
 	})
 }

@@ -67,13 +67,31 @@ var reqCmd = &cobra.Command{
 		}
 		defer s.Close()
 
+		cfg, err = InitAWSConfig(ctx, ssoProfile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "unable to load SDK config: %s", err.Error())
+			os.Exit(1)
+		}
 		app := app.New(cfg, ssoProfile, s)
 		// if err = app.PrintID(); err != nil {
 		// 	fmt.Fprintln(os.Stderr, err.Error())
 		// 	os.Exit(1)
 		// }
 
-		res, err := app.GetEvents(ctx, groupName, b, e)
+		if groupName == "" {
+			// No groupName specified, try to find it automatically
+			groupName, err = app.FindLogGroupAuto(ctx)
+			if groupName == "" {
+				fmt.Fprintln(os.Stderr, "Log group not found automatically (add option -g)")
+				os.Exit(1)
+			}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%v\n", err.Error())
+				os.Exit(1)
+			}
+		}
+
+		res, err := app.GetEvents(ctx, ssoProfile, groupName, b, e)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)

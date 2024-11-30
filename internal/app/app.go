@@ -200,9 +200,9 @@ func (a *App) PrintEvents(ctx context.Context, groupName string, logStream strin
 
 // GetEvents returns events occured between two dates
 // Use
-func (a *App) GetEvents(ctx context.Context, groupName string, beginDate carbon.Carbon, endDate carbon.Carbon) ([]database.Log, error) {
+func (a *App) GetEvents(ctx context.Context, profile string, groupName string, beginDate carbon.Carbon, endDate carbon.Carbon) ([]database.Log, error) {
 
-	res, err := a.queries.GetLogs(ctx, beginDate, endDate)
+	res, err := a.queries.GetLogs(ctx, beginDate, endDate, groupName, profile)
 	if err != nil {
 		return nil, err
 	}

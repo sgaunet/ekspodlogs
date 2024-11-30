@@ -19,23 +19,6 @@ var purgeCmd = &cobra.Command{
 		var err error
 
 		ctx := context.Background()
-		// fmt.Println("profile:", ssoProfile)
-		// fmt.Println("begin:", beginDate)
-		// fmt.Println("end:", endDate)
-
-		// b := carbon.Parse(beginDate)
-		// if b.Error != nil {
-		// 	fmt.Fprintln(os.Stderr, "Invalid begin date")
-		// 	os.Exit(1)
-		// }
-		// e := carbon.Parse(endDate)
-		// if e.Error != nil {
-		// 	fmt.Fprintln(os.Stderr, "Invalid end date")
-		// 	os.Exit(1)
-		// }
-		// fmt.Println("begin:", b)
-		// fmt.Println("end:", e)
-
 		// DB file
 		homeDir := os.Getenv("HOME")
 		if homeDir == "" {
