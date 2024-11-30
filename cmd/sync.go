@@ -2,13 +2,11 @@ package cmd
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/dromara/carbon/v2"
 	"github.com/sgaunet/ekspodlogs/internal/app"
 	"github.com/sgaunet/ekspodlogs/pkg/storage/sqlite"
 	"github.com/sirupsen/logrus"
@@ -44,25 +42,20 @@ var syncCmd = &cobra.Command{
 		fmt.Println("begin:", beginDate)
 		fmt.Println("end:", endDate)
 
-		b := carbon.Parse(beginDate)
-		if b.Error != nil {
-			fmt.Fprintln(os.Stderr, "Invalid begin date")
-			os.Exit(1)
-		}
-		e := carbon.Parse(endDate)
-		if e.Error != nil {
-			fmt.Fprintln(os.Stderr, "Invalid end date")
+		b, e, err := ConvertTimeToCarbon(beginDate, endDate)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
 		fmt.Println("begin:", b)
 		fmt.Println("end:", e)
 
 		// Get logs, controls parameters
-		if len(logStream) == 0 {
-			fmt.Fprintln(os.Stderr, "Mandatory option : -l")
-			flag.PrintDefaults()
-			os.Exit(1)
-		}
+		// if len(logStream) == 0 {
+		// 	fmt.Fprintln(os.Stderr, "Mandatory option : -l")
+		// 	flag.PrintDefaults()
+		// 	os.Exit(1)
+		// }
 
 		// No profile selected
 		if len(ssoProfile) == 0 {
