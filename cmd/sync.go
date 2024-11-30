@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/sgaunet/ekspodlogs/internal/app"
 	"github.com/sgaunet/ekspodlogs/pkg/storage/sqlite"
 	"github.com/sirupsen/logrus"
@@ -57,16 +56,7 @@ var syncCmd = &cobra.Command{
 		// 	os.Exit(1)
 		// }
 
-		// No profile selected
-		if len(ssoProfile) == 0 {
-			cfg, err = config.LoadDefaultConfig(ctx)
-		} else {
-			// Try to connect with the SSO profile put in parameter
-			cfg, err = config.LoadDefaultConfig(
-				ctx,
-				config.WithSharedConfigProfile(ssoProfile),
-			)
-		}
+		cfg, err = InitAWSConfig(ctx, ssoProfile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "unable to load SDK config: %s", err.Error())
 			os.Exit(1)
