@@ -70,7 +70,7 @@ func (a *App) parseAllStreamsOfGroup(ctx context.Context, groupName string, logS
 	// Loop over streams
 	for idx, j := range res2.LogStreams {
 		fmt.Println(idx, *j.LogStreamName)
-		if strings.Contains(*j.LogStreamName, logStream) {
+		if strings.Contains(*j.LogStreamName, logStream) || len(logStream) == 0 {
 			tm := time.Unix(*j.LastEventTimestamp/1000, 0) // aws timestamp are in ms
 			// convert tm to date
 			lastEvent := carbon.CreateFromTimestamp(*j.LastEventTimestamp / 1000)
