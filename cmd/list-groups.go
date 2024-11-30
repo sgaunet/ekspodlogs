@@ -38,7 +38,7 @@ var listGroupsCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		app := app.New(cfg, nil)
+		app := app.New(cfg, ssoProfile, nil)
 		if err = app.PrintID(); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)

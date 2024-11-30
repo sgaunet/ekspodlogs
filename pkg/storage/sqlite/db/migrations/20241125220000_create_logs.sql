@@ -2,6 +2,8 @@
 
 CREATE TABLE logs (
     id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+    profile character varying(50) NOT NULL,
+    loggroup character varying(255) NOT NULL,
     event_time timestamp NOT NULL,
     namespace_name character varying(255) NOT NULL,
     pod_name character varying(255) NOT NULL,

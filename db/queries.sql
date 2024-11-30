@@ -1,12 +1,19 @@
 
--- name: PurgeLogs :exec
+-- name: PurgeAllLogs :exec
 DELETE FROM logs;
 
+-- name: PurgeLogs :exec
+DELETE FROM logs WHERE profile = ? AND loggroup = ?;
+
 -- name: InsertLog :exec
-INSERT INTO logs (event_time, namespace_name, pod_name, container_name, log) VALUES (?, ?, ?, ?, ?);
+INSERT INTO logs (event_time,profile,loggroup, namespace_name, pod_name, container_name, log) VALUES (? ,?, ?, ?, ?, ?, ?);
 
 -- name: GetLogs :many
-SELECT * FROM logs WHERE event_time >= sqlc.arg(begindate) and event_time <= sqlc.arg(enddate) ORDER BY event_time;
+SELECT * FROM logs 
+WHERE event_time >= sqlc.arg(begindate) and event_time <= sqlc.arg(enddate)
+    AND loggroup = ?
+    AND profile = ?
+ORDER BY event_time;
 
 -- name: CountLogs :one
 SELECT COUNT(*) FROM logs;

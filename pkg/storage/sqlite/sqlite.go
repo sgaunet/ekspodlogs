@@ -68,12 +68,14 @@ func (s *Storage) Init() error {
 }
 
 func (s *Storage) Purge(ctx context.Context) error {
-	return s.queries.PurgeLogs(ctx)
+	return s.queries.PurgeAllLogs(ctx)
 }
 
-func (s *Storage) AddLog(ctx context.Context, eventTime time.Time, podName, containerName, nameSpace, log string) error {
+func (s *Storage) AddLog(ctx context.Context, profile string, loggroup string, eventTime time.Time, podName, containerName, nameSpace, log string) error {
 	return s.queries.InsertLog(ctx, database.InsertLogParams{
 		EventTime:     eventTime,
+		Profile:       profile,
+		Loggroup:      loggroup,
 		PodName:       podName,
 		ContainerName: containerName,
 		NamespaceName: nameSpace,

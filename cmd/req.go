@@ -73,7 +73,7 @@ var reqCmd = &cobra.Command{
 		}
 		defer s.Close()
 
-		app := app.New(cfg, s)
+		app := app.New(cfg, ssoProfile, s)
 		// if err = app.PrintID(); err != nil {
 		// 	fmt.Fprintln(os.Stderr, err.Error())
 		// 	os.Exit(1)

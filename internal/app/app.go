@@ -27,6 +27,7 @@ const logGroupRateLimit = 10
 type App struct {
 	appLog               *logrus.Logger
 	cfg                  aws.Config
+	profileName          string
 	eventsRateLimit      *rate.Limiter
 	logGroupRateLimit    *rate.Limiter
 	clientCloudwatchlogs *cloudwatchlogs.Client
@@ -34,12 +35,13 @@ type App struct {
 }
 
 // New creates a new App
-func New(cfg aws.Config, db *sqlite.Storage) *App {
+func New(cfg aws.Config, profileName string, db *sqlite.Storage) *App {
 	er := rate.NewLimiter(rate.Every(1*time.Second), eventsRateLimit)
 	lgr := rate.NewLimiter(rate.Every(1*time.Second), logGroupRateLimit)
 	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
 	app := App{
 		cfg:                  cfg,
+		profileName:          profileName,
 		eventsRateLimit:      er,
 		logGroupRateLimit:    lgr,
 		clientCloudwatchlogs: clientCloudwatchlogs,
@@ -131,7 +133,7 @@ func (a *App) getEvents(ctx context.Context, groupName string, streamName string
 		}
 		timeT := time.Unix(*k.Timestamp/1000, 0)
 		fmt.Printf("%s -- %s -- %s\n", timeT, lineOfLog.Kubernetes.ContainerName, lineOfLog.Log)
-		err = a.queries.AddLog(ctx, timeT, lineOfLog.Kubernetes.PodName, lineOfLog.Kubernetes.ContainerName, lineOfLog.Kubernetes.NamespaceName, lineOfLog.Log)
+		err = a.queries.AddLog(ctx, a.profileName, groupName, timeT, lineOfLog.Kubernetes.PodName, lineOfLog.Kubernetes.ContainerName, lineOfLog.Kubernetes.NamespaceName, lineOfLog.Log)
 		if err != nil {
 			return err
 		}
