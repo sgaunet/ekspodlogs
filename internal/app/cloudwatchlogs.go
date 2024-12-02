@@ -56,21 +56,23 @@ func (a *App) parseAllStreamsOfGroup(ctx context.Context, groupName string, logS
 		paramsLogStream.NextToken = &nextToken
 	}
 	// https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs#Client.DescribeLogStreams
-	now := time.Now()
-	fmt.Println("Waiting for rate limit")
-	a.logGroupRateLimit.Wait(ctx)
-	fmt.Println("Duration:", time.Since(now))
+	// now := time.Now()
+	// fmt.Println("Waiting for rate limit")
+	// fmt.Println("Duration:", time.Since(now))
 
-	fmt.Println("Calling DescribeLogStreams")
+	// fmt.Println("Calling DescribeLogStreams")
+	a.logGroupRateLimit.Wait(ctx)
 	res2, err := a.clientCloudwatchlogs.DescribeLogStreams(context.TODO(), &paramsLogStream)
-	fmt.Println("Called DescribeLogStreams")
+	// fmt.Println("Called DescribeLogStreams")
 	if err != nil {
 		return nil, err
 	}
 	// Loop over streams
-	for idx, j := range res2.LogStreams {
-		fmt.Println(idx, *j.LogStreamName)
+	for _, j := range res2.LogStreams {
+		a.tui.IncNbLogStreams()
+		// fmt.Println(idx, *j.LogStreamName)
 		if strings.Contains(*j.LogStreamName, logStream) || len(logStream) == 0 {
+			a.tui.IncNbLogStreamsFound()
 			tm := time.Unix(*j.LastEventTimestamp/1000, 0) // aws timestamp are in ms
 			// convert tm to date
 			lastEvent := carbon.CreateFromTimestamp(*j.LastEventTimestamp / 1000)

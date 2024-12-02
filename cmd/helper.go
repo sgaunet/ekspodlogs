@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/dromara/carbon/v2"
+	"github.com/sirupsen/logrus"
 )
 
 func ConvertTimeToCarbon(beginDate, endDate string) (carbon.Carbon, carbon.Carbon, error) {
@@ -39,4 +41,35 @@ func InitAWSConfig(ctx context.Context, profile string) (cfg aws.Config, err err
 		return aws.Config{}, fmt.Errorf("unable to load SDK config: %w", err)
 	}
 	return cfg, nil
+}
+
+// InitLog initializes the logger
+func NewLogger() *logrus.Logger {
+	appLog := logrus.New()
+	// Log as JSON instead of the default ASCII formatter.
+	//log.SetFormatter(&log.JSONFormatter{})
+	appLog.SetFormatter(&logrus.TextFormatter{
+		DisableColors:    false,
+		FullTimestamp:    false,
+		DisableTimestamp: true,
+	})
+
+	// Output to stdout instead of the default stderr
+	// Can be any io.Writer, see below for File example
+	appLog.SetOutput(os.Stdout)
+
+	switch os.Getenv("DEBUGLEVEL") {
+	case "info":
+		appLog.SetLevel(logrus.InfoLevel)
+	case "warn":
+		appLog.SetLevel(logrus.WarnLevel)
+	case "error":
+		appLog.SetLevel(logrus.ErrorLevel)
+	case "debug":
+		appLog.SetLevel(logrus.DebugLevel)
+	default:
+		appLog.SetLevel(logrus.InfoLevel)
+	}
+	appLog.Infoln("Log level:", appLog.Level)
+	return appLog
 }

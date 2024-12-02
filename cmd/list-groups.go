@@ -7,6 +7,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/sgaunet/ekspodlogs/internal/app"
+	"github.com/sgaunet/ekspodlogs/pkg/views"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +29,8 @@ var listGroupsCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		app := app.New(cfg, ssoProfile, nil)
+		tui := views.NewTerminalView()
+		app := app.New(cfg, ssoProfile, nil, tui)
 		if err = app.PrintID(); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)

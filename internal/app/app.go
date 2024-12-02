@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sync"
+	"sync/atomic"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,6 +19,7 @@ import (
 	"github.com/dromara/carbon/v2"
 	"github.com/sgaunet/ekspodlogs/internal/database"
 	"github.com/sgaunet/ekspodlogs/pkg/storage/sqlite"
+	"github.com/sgaunet/ekspodlogs/pkg/views"
 	"github.com/sirupsen/logrus"
 )
 
@@ -32,10 +36,11 @@ type App struct {
 	logGroupRateLimit    *rate.Limiter
 	clientCloudwatchlogs *cloudwatchlogs.Client
 	queries              *sqlite.Storage
+	tui                  *views.TerminalView
 }
 
 // New creates a new App
-func New(cfg aws.Config, profileName string, db *sqlite.Storage) *App {
+func New(cfg aws.Config, profileName string, db *sqlite.Storage, tui *views.TerminalView) *App {
 	er := rate.NewLimiter(rate.Every(1*time.Second), eventsRateLimit)
 	lgr := rate.NewLimiter(rate.Every(1*time.Second), logGroupRateLimit)
 	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
@@ -46,9 +51,14 @@ func New(cfg aws.Config, profileName string, db *sqlite.Storage) *App {
 		logGroupRateLimit:    lgr,
 		clientCloudwatchlogs: clientCloudwatchlogs,
 		queries:              db,
+		tui:                  tui,
+		appLog:               logrus.New(),
 	}
-	app.InitLog()
 	return &app
+}
+
+func (a *App) SetLogger(logger *logrus.Logger) {
+	a.appLog = logger
 }
 
 // PrintID prints AWS identity only for debug purpose
@@ -65,37 +75,6 @@ func (a *App) PrintID() error {
 	a.appLog.Debugf("UserID: %s\n", aws.ToString(identity.UserId))
 	a.appLog.Debugf("ARN: %s\n", aws.ToString(identity.Arn))
 	return nil
-}
-
-// InitLog initializes the logger
-func (a *App) InitLog() {
-	appLog := logrus.New()
-	// Log as JSON instead of the default ASCII formatter.
-	//log.SetFormatter(&log.JSONFormatter{})
-	appLog.SetFormatter(&logrus.TextFormatter{
-		DisableColors:    false,
-		FullTimestamp:    false,
-		DisableTimestamp: true,
-	})
-
-	// Output to stdout instead of the default stderr
-	// Can be any io.Writer, see below for File example
-	appLog.SetOutput(os.Stdout)
-
-	switch os.Getenv("DEBUGLEVEL") {
-	case "info":
-		appLog.SetLevel(logrus.InfoLevel)
-	case "warn":
-		appLog.SetLevel(logrus.WarnLevel)
-	case "error":
-		appLog.SetLevel(logrus.ErrorLevel)
-	case "debug":
-		appLog.SetLevel(logrus.DebugLevel)
-	default:
-		appLog.SetLevel(logrus.InfoLevel)
-	}
-	a.appLog = appLog
-	a.appLog.Infoln("Log level:", a.appLog.Level)
 }
 
 // getEvents parse events of a stream and print results that do not match with any rules on stdout
@@ -132,7 +111,7 @@ func (a *App) getEvents(ctx context.Context, groupName string, streamName string
 			return err
 		}
 		timeT := time.Unix(*k.Timestamp/1000, 0)
-		fmt.Printf("%s -- %s -- %s\n", timeT, lineOfLog.Kubernetes.ContainerName, lineOfLog.Log)
+		// fmt.Printf("%s -- %s -- %s\n", timeT, lineOfLog.Kubernetes.ContainerName, lineOfLog.Log)
 		err = a.queries.AddLog(ctx, a.profileName, groupName, timeT, lineOfLog.Kubernetes.PodName, lineOfLog.Kubernetes.ContainerName, lineOfLog.Kubernetes.NamespaceName, lineOfLog.Log)
 		if err != nil {
 			return err
@@ -180,31 +159,94 @@ func (a *App) FindLogGroupAuto(ctx context.Context) (string, error) {
 
 // PrintEvents prints events of a log group
 func (a *App) PrintEvents(ctx context.Context, groupName string, logStream string, startTime time.Time, endTime time.Time) error {
+	var errWorker error
 	minTimeStampInMs := startTime.Unix() * 1000
 	maxTimeStampInMs := endTime.Unix() * 1000
 
+	a.tui.StartSpinnerRetrieveLogStreams()
 	logStreams, err := a.findLogStream(ctx, groupName, logStream, minTimeStampInMs, maxTimeStampInMs)
 	if err != nil {
+		// err spinner
 		return err
 	}
+	a.tui.StopSpinnerRetrieveLogStreams()
+	err = a.tui.StartSpinnerScanLogStreams()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error spinner: %s", err)
+	}
+
+	var wg sync.WaitGroup
+	chWorker := make(chan workEvent, 3)
+	// Launch workers in background
+	wg.Add(1)
+	go func() {
+		errWorker = a.workerEvents(ctx, &wg, chWorker)
+	}()
+
 	for _, l := range logStreams {
-		fmt.Println("LogStreamName:", *l.LogStreamName)
+		// fmt.Println("LogStreamName:", *l.LogStreamName)
 		// store events in sqlite
-		err = a.getEvents(ctx, groupName, *l.LogStreamName, minTimeStampInMs, maxTimeStampInMs, "")
+		// eg.Go(func() error {
+		// a.tui.IncNbStreamsScanned() // To remove just a test to confirm that the spinner is working
+		// err = a.getEvents(ctx, groupName, *l.LogStreamName, minTimeStampInMs, maxTimeStampInMs, "")
+		work := workEvent{
+			groupName:    groupName,
+			streamName:   *l.LogStreamName,
+			minTimeStamp: minTimeStampInMs,
+			maxTimeStamp: maxTimeStampInMs,
+		}
+		chWorker <- work
+		a.tui.IncNbStreamsScanned()
+		// fmt.Printf("LogStream %d\n", idx)
 		if err != nil {
 			return err
 		}
+		// return nil
+		// })
 	}
-	return nil
+	close(chWorker)
+	wg.Wait()
+	err = errWorker
+	a.tui.StopSpinnerScanLogStreams()
+	return err
 }
 
 // GetEvents returns events occured between two dates
 // Use
 func (a *App) GetEvents(ctx context.Context, profile string, groupName string, beginDate carbon.Carbon, endDate carbon.Carbon) ([]database.Log, error) {
-
 	res, err := a.queries.GetLogs(ctx, beginDate, endDate, groupName, profile)
 	if err != nil {
 		return nil, err
 	}
 	return res, nil
+}
+
+type workEvent struct {
+	groupName    string
+	streamName   string
+	minTimeStamp int64
+	maxTimeStamp int64
+}
+
+func (a *App) workerEvents(ctx context.Context, wg *sync.WaitGroup, work <-chan workEvent) error {
+	var errGrp errgroup.Group
+	var currentWorkers atomic.Int32
+	var maxConcurrentWorkers int32 = 10
+
+	for w := range work {
+		for currentWorkers.Load() >= maxConcurrentWorkers {
+			time.Sleep(1 * time.Second)
+		}
+		errGrp.Go(func() error {
+			currentWorkers.Add(1)
+			err := a.getEvents(ctx, w.groupName, w.streamName, w.minTimeStamp, w.maxTimeStamp, "")
+			currentWorkers.Add(-1)
+			return err
+		})
+	}
+	// fmt.Println("Waiting for workers to finish")
+	err := errGrp.Wait()
+	// fmt.Println("Workers finished")
+	wg.Done()
+	return err
 }
