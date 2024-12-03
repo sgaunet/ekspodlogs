@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// ConvertTimeToCarbon converts the begin and end date to carbon.Carbon
 func ConvertTimeToCarbon(beginDate, endDate string) (carbon.Carbon, carbon.Carbon, error) {
 	b := carbon.Parse(beginDate)
 	if b.Error != nil {
@@ -27,6 +28,8 @@ func ConvertTimeToCarbon(beginDate, endDate string) (carbon.Carbon, carbon.Carbo
 	return b, e, nil
 }
 
+// InitAWSConfig initializes the AWS SDK configuration
+// If the ssoProfile is empty, it will use the default profile
 func InitAWSConfig(ctx context.Context, profile string) (cfg aws.Config, err error) {
 	if len(ssoProfile) == 0 {
 		cfg, err = config.LoadDefaultConfig(ctx)
@@ -43,7 +46,7 @@ func InitAWSConfig(ctx context.Context, profile string) (cfg aws.Config, err err
 	return cfg, nil
 }
 
-// InitLog initializes the logger
+// NewLogger creates a new logger
 func NewLogger() *logrus.Logger {
 	appLog := logrus.New()
 	// Log as JSON instead of the default ASCII formatter.
