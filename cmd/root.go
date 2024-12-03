@@ -3,8 +3,12 @@ package cmd
 import (
 	"os"
 
+	"github.com/sgaunet/ekspodlogs/pkg/storage/sqlite"
 	"github.com/spf13/cobra"
 )
+
+var DBPath string
+var s *sqlite.Storage
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{

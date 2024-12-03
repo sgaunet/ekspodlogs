@@ -7,7 +7,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/sgaunet/ekspodlogs/internal/app"
-	"github.com/sgaunet/ekspodlogs/pkg/storage/sqlite"
 	"github.com/sgaunet/ekspodlogs/pkg/views"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -63,42 +62,14 @@ var syncCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		// DB file
-		homeDir := os.Getenv("HOME")
-		if homeDir == "" {
-			logrus.Errorln("Cannot find HOME environment variable")
-			os.Exit(1)
-		}
-		dbFile := fmt.Sprintf("%s/.ekspodlogs.db", homeDir)
-
-		// Check existence of DB file
-		_, err = os.Stat(dbFile)
-		if os.IsNotExist(err) {
-			logrus.Infoln("DB file not found, create it")
-			s, err := sqlite.NewStorage(dbFile)
-			if err != nil {
-				logrus.Errorln(err.Error())
-				os.Exit(1)
-			}
-			err = s.Init()
-			if err != nil {
-				logrus.Errorln(err.Error())
-				os.Exit(1)
-			}
-			s.Close()
-		}
-
-		s, err := sqlite.NewStorage(dbFile)
-		if err != nil {
-			logrus.Errorln(err.Error())
-			os.Exit(1)
-		}
+		InitDB() // Initialize the database and exit if an error occurs
 		defer s.Close()
 
 		// Purge DB
 		err = s.Purge(ctx)
 		if err != nil {
 			logrus.Errorln(err.Error())
+			defer s.Close()
 			os.Exit(1)
 		}
 
@@ -106,6 +77,7 @@ var syncCmd = &cobra.Command{
 		app := app.New(cfg, ssoProfile, s, tui)
 		if err = app.PrintID(); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
+			defer s.Close()
 			os.Exit(1)
 		}
 
@@ -114,10 +86,12 @@ var syncCmd = &cobra.Command{
 			groupName, err = app.FindLogGroupAuto(ctx)
 			if groupName == "" {
 				fmt.Fprintln(os.Stderr, "Log group not found automatically (add option -g)")
+				defer s.Close()
 				os.Exit(1)
 			}
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%v\n", err.Error())
+				defer s.Close()
 				os.Exit(1)
 			}
 		}
@@ -125,6 +99,7 @@ var syncCmd = &cobra.Command{
 		err = app.PrintEvents(ctx, groupName, logStream, b.StdTime(), e.StdTime())
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
+			defer s.Close()
 			os.Exit(1)
 		}
 	},

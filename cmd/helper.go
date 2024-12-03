@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/dromara/carbon/v2"
+	"github.com/sgaunet/ekspodlogs/pkg/storage/sqlite"
 	"github.com/sirupsen/logrus"
 )
 
@@ -82,4 +83,54 @@ func NewLogger(debugLevel string) *logrus.Logger {
 	}
 	appLog.Infoln("Log level:", appLog.Level)
 	return appLog
+}
+
+// DefaultDBPath returns the default path of the database
+func DefaultDBPath() (string, error) {
+	homeDir := os.Getenv("HOME")
+	if homeDir == "" {
+		return "", errors.New("HOME environment variable not set")
+	}
+	dbFile := fmt.Sprintf("%s/.ekspodlogs.db", homeDir)
+	return dbFile, nil
+}
+
+// CreateDBIfNotExists creates the database if it does not exist
+func CreateDBIfNotExists(dbPath string) (*sqlite.Storage, error) {
+	_, err := os.Stat(dbPath)
+	if os.IsNotExist(err) {
+		s, err := sqlite.NewStorage(dbPath)
+		if err != nil {
+			return nil, err
+		}
+		err = s.Init()
+		if err != nil {
+			return nil, err
+		}
+		s.Close()
+	}
+
+	s, err := sqlite.NewStorage(dbPath)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// InitDB initializes the database
+// It will create the database if it does not exist
+// It will initialize some global variables
+// In case of error, it will exit the program
+func InitDB() {
+	var err error
+	DBPath, err = DefaultDBPath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "unable to get the default DB path: %s", err.Error())
+		os.Exit(1)
+	}
+	s, err = CreateDBIfNotExists(DBPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "unable to create the sqlite storage: %s", err.Error())
+		os.Exit(1)
+	}
 }

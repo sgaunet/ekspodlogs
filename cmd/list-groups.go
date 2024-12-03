@@ -11,11 +11,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// syncCmd represents the sync command
+// listGroupsCmd represents the list-groups command
 var listGroupsCmd = &cobra.Command{
 	Use:   "list-groups",
-	Short: "List groups",
-	Long:  `List groups`,
+	Short: "list-groups lists the log groups",
+	Long:  `list-groups lists the log groups. It will list all the log groups in the AWS account.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		var cfg aws.Config // Configuration to connect to AWS API
 		var err error
