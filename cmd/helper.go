@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -47,7 +48,13 @@ func InitAWSConfig(ctx context.Context, profile string) (cfg aws.Config, err err
 }
 
 // NewLogger creates a new logger
-func NewLogger() *logrus.Logger {
+// The debugLevel is the variable to set the log level
+// It can be "info", "warn", "error" or "debug"
+// If the variable is not set, the default log level is "info"
+// Be careful, the log level is case sensitive and by default,
+// every logs are **discarded**, set the output to os.Stdout to see the logs
+// Example: l:=NewLogger(); l.SetOutput(os.Stdout)
+func NewLogger(debugLevel string) *logrus.Logger {
 	appLog := logrus.New()
 	// Log as JSON instead of the default ASCII formatter.
 	//log.SetFormatter(&log.JSONFormatter{})
@@ -59,9 +66,9 @@ func NewLogger() *logrus.Logger {
 
 	// Output to stdout instead of the default stderr
 	// Can be any io.Writer, see below for File example
-	appLog.SetOutput(os.Stdout)
+	appLog.SetOutput(io.Discard)
 
-	switch os.Getenv("DEBUGLEVEL") {
+	switch os.Getenv(debugLevel) {
 	case "info":
 		appLog.SetLevel(logrus.InfoLevel)
 	case "warn":
