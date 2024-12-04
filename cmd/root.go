@@ -7,8 +7,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var DBPath string
-var s *sqlite.Storage
+var (
+	DBPath string
+	s      *sqlite.Storage
+
+	// Flags
+	beginDate  string
+	endDate    string
+	groupName  string
+	ssoProfile string
+	podName    string
+)
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -38,19 +47,19 @@ func init() {
 	syncCmd.Flags().StringVarP(&endDate, "end", "e", "", "End date")
 	syncCmd.Flags().StringVarP(&groupName, "group", "g", "", "Group name (not mandatory if there is only one log group : /aws/containerinsights/<Name of your cluster>/application)")
 	syncCmd.Flags().StringVarP(&ssoProfile, "profile", "p", "", "SSO profile (not mandatory)")
-	syncCmd.Flags().StringVarP(&logStream, "logstream", "l", "", "string that have to match with the log stream name")
+	syncCmd.Flags().StringVarP(&podName, "pod", "n", "", "string that have to match with the pod name")
 	rootCmd.AddCommand(syncCmd)
 
-	// purgeCmd.Flags().StringVarP(&beginDate, "begin", "b", "", "Begin date")
-	// purgeCmd.Flags().StringVarP(&endDate, "end", "e", "", "End date")
-	// purgeCmd.Flags().StringVarP(&ssoProfile, "profile", "p", "", "SSO profile")
+	purgeCmd.Flags().StringVarP(&groupName, "group", "g", "", "Group name (not mandatory if there is only one log group : /aws/containerinsights/<Name of your cluster>/application)")
+	purgeCmd.Flags().StringVarP(&ssoProfile, "profile", "p", "", "SSO profile (not mandatory)")
+	purgeCmd.Flags().StringVarP(&podName, "pod", "n", "", "string that have to match with the pod name")
 	rootCmd.AddCommand(purgeCmd)
 
 	reqCmd.Flags().StringVarP(&beginDate, "begin", "b", "", "Begin date")
 	reqCmd.Flags().StringVarP(&endDate, "end", "e", "", "End date")
 	reqCmd.Flags().StringVarP(&groupName, "group", "g", "", "Group name (not mandatory if there is only one log group : /aws/containerinsights/<Name of your cluster>/application)")
 	reqCmd.Flags().StringVarP(&ssoProfile, "profile", "p", "", "SSO profile (not mandatory)")
-	reqCmd.Flags().StringVarP(&logStream, "logstream", "l", "", "string that have to match with the log stream name")
+	reqCmd.Flags().StringVarP(&podName, "podname", "n", "", "string that have to match with the pod name")
 	rootCmd.AddCommand(reqCmd)
 
 	listGroupsCmd.Flags().StringVarP(&ssoProfile, "profile", "p", "", "SSO profile (not mandatory)")

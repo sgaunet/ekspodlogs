@@ -12,19 +12,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var beginDate string
-var endDate string
-var groupName string
-var ssoProfile string
-var logStream string
-
-// flag.BoolVar(&listGroupOption, "lg", false, "List LogGroup")
-// flag.StringVar(&groupName, "g", "", "LogGroup to parse (not mandatory if there is only one log group : /aws/containerinsights/<Name of your cluster>/application)")
-// flag.StringVar(&ssoProfile, "p", "", "Auth by SSO")
-// flag.StringVar(&startDate, "s", "", "Start date (YYYY-MM-DD HH:MM:SS) - mandatory")
-// flag.StringVar(&endDate, "e", "", "End date  (YYYY-MM-DD HH:MM:SS) - mandatory")
-// flag.StringVar(&logStream, "l", "", "LogStream to search - mandatory")
-
 // syncCmd represents the sync command
 var syncCmd = &cobra.Command{
 	Use:   "sync",
@@ -37,7 +24,7 @@ var syncCmd = &cobra.Command{
 		ctx := context.Background()
 		fmt.Println("group:", groupName)
 		fmt.Println("profile:", ssoProfile)
-		fmt.Println("logstream:", logStream)
+		fmt.Println("pod:", podName)
 		fmt.Println("begin:", beginDate)
 		fmt.Println("end:", endDate)
 
@@ -66,7 +53,7 @@ var syncCmd = &cobra.Command{
 		defer s.Close()
 
 		// Purge DB
-		err = s.Purge(ctx)
+		err = s.PurgeSpecificPeriod(ctx, ssoProfile, groupName, podName, b, e)
 		if err != nil {
 			logrus.Errorln(err.Error())
 			defer s.Close()
@@ -96,7 +83,7 @@ var syncCmd = &cobra.Command{
 			}
 		}
 
-		err = app.PrintEvents(ctx, groupName, logStream, b.StdTime(), e.StdTime())
+		err = app.PrintEvents(ctx, groupName, podName, b.StdTime(), e.StdTime())
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			defer s.Close()

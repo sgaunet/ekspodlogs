@@ -67,8 +67,30 @@ func (s *Storage) Init() error {
 	return nil
 }
 
-func (s *Storage) Purge(ctx context.Context) error {
-	return s.queries.PurgeAllLogs(ctx)
+func (s *Storage) PurgeAll(ctx context.Context) error {
+	return s.queries.PurgeAll(ctx)
+}
+
+func (s *Storage) PurgeSpecificPeriod(ctx context.Context, profile string, loggroup string, podName string, beginDate carbon.Carbon, endDate carbon.Carbon) error {
+	podName = "%" + podName + "%"
+	err := s.queries.PurgeSpecificPeriod(ctx, database.PurgeSpecificPeriodParams{
+		Profile:   profile,
+		Loggroup:  loggroup,
+		PodName:   podName,
+		Begindate: beginDate.StdTime(),
+		Enddate:   endDate.StdTime(),
+	})
+	return err
+}
+
+func (s *Storage) PurgeSpecificLogPodLogs(ctx context.Context, profile string, loggroup string, podName string) error {
+	podName = "%" + podName + "%"
+	err := s.queries.PurgeSpecificLogPodLogs(ctx, database.PurgeSpecificLogPodLogsParams{
+		Profile:  profile,
+		Loggroup: loggroup,
+		PodName:  podName,
+	})
+	return err
 }
 
 func (s *Storage) AddLog(ctx context.Context, profile string, loggroup string, eventTime time.Time, podName, containerName, nameSpace, log string) error {
@@ -93,11 +115,13 @@ func (s *Storage) GetLogsOfPod(ctx context.Context, profile string, logGroup str
 	})
 }
 
-func (s *Storage) GetLogs(ctx context.Context, beginDate carbon.Carbon, endDate carbon.Carbon, logGroup string, profile string) ([]database.Log, error) {
+func (s *Storage) GetLogs(ctx context.Context, logGroup string, profile string, podName string, beginDate carbon.Carbon, endDate carbon.Carbon) ([]database.Log, error) {
+	podName = "%" + podName + "%"
 	return s.queries.GetLogs(ctx, database.GetLogsParams{
 		Begindate: beginDate.StdTime(),
 		Enddate:   endDate.StdTime(),
 		Loggroup:  logGroup,
 		Profile:   profile,
+		PodName:   podName,
 	})
 }
