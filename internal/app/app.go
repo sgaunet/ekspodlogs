@@ -24,8 +24,8 @@ import (
 )
 
 // quota for AWS API: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/cloudwatch_limits_cwl.html
-const eventsRateLimit = 30
-const logGroupRateLimit = 10
+const maxEventsAPICallPerSecond = 30
+const maxLogGroupAPICALLPerSecond = 10
 
 // App is the main structure of the application
 type App struct {
@@ -41,14 +41,12 @@ type App struct {
 
 // New creates a new App
 func New(cfg aws.Config, profileName string, db *sqlite.Storage, tui *views.TerminalView) *App {
-	er := rate.NewLimiter(rate.Every(1*time.Second), eventsRateLimit)
-	lgr := rate.NewLimiter(rate.Every(1*time.Second), logGroupRateLimit)
 	clientCloudwatchlogs := cloudwatchlogs.NewFromConfig(cfg)
 	app := App{
 		cfg:                  cfg,
 		profileName:          profileName,
-		eventsRateLimit:      er,
-		logGroupRateLimit:    lgr,
+		eventsRateLimit:      rate.NewLimiter(rate.Every(1*time.Second), maxEventsAPICallPerSecond),
+		logGroupRateLimit:    rate.NewLimiter(rate.Every(1*time.Second), maxLogGroupAPICALLPerSecond),
 		clientCloudwatchlogs: clientCloudwatchlogs,
 		queries:              db,
 		tui:                  tui,
@@ -57,11 +55,14 @@ func New(cfg aws.Config, profileName string, db *sqlite.Storage, tui *views.Term
 	return &app
 }
 
+// SetLogger sets the logger
 func (a *App) SetLogger(logger *logrus.Logger) {
 	a.appLog = logger
 }
 
-// PrintID prints AWS identity only for debug purpose
+// PrintID prints AWS identity
+// This function is used to test the AWS connection
+// Set a logger at debug level to see the output
 func (a *App) PrintID() error {
 	client := sts.NewFromConfig(a.cfg)
 	identity, err := client.GetCallerIdentity(
@@ -136,7 +137,8 @@ func (a *App) ListLogGroups(ctx context.Context, NextToken string) error {
 	return err
 }
 
-// FindLogGroupAuto finds the EKS log group automatically
+// FindLogGroupAuto finds the EKS log group automatically by filtering the log groups
+// It returns the log group name if only one is found
 func (a *App) FindLogGroupAuto(ctx context.Context) (string, error) {
 	loggroups, err := a.recurseListLogGroup(ctx, a.clientCloudwatchlogs, "")
 	if err != nil {
@@ -184,11 +186,6 @@ func (a *App) PrintEvents(ctx context.Context, groupName string, logStream strin
 	}()
 
 	for _, l := range logStreams {
-		// fmt.Println("LogStreamName:", *l.LogStreamName)
-		// store events in sqlite
-		// eg.Go(func() error {
-		// a.tui.IncNbStreamsScanned() // To remove just a test to confirm that the spinner is working
-		// err = a.getEvents(ctx, groupName, *l.LogStreamName, minTimeStampInMs, maxTimeStampInMs, "")
 		work := workEvent{
 			groupName:    groupName,
 			streamName:   *l.LogStreamName,
@@ -197,12 +194,9 @@ func (a *App) PrintEvents(ctx context.Context, groupName string, logStream strin
 		}
 		chWorker <- work
 		a.tui.IncNbStreamsScanned()
-		// fmt.Printf("LogStream %d\n", idx)
 		if err != nil {
 			return err
 		}
-		// return nil
-		// })
 	}
 	close(chWorker)
 	wg.Wait()
@@ -212,7 +206,7 @@ func (a *App) PrintEvents(ctx context.Context, groupName string, logStream strin
 }
 
 // GetEvents returns events occured between two dates
-// Use
+// This function is used to get events from the database
 func (a *App) GetEvents(ctx context.Context, profile string, groupName string, beginDate carbon.Carbon, endDate carbon.Carbon) ([]database.Log, error) {
 	res, err := a.queries.GetLogs(ctx, beginDate, endDate, groupName, profile)
 	if err != nil {
@@ -221,6 +215,7 @@ func (a *App) GetEvents(ctx context.Context, profile string, groupName string, b
 	return res, nil
 }
 
+// workEvent is a struct to send work to workers
 type workEvent struct {
 	groupName    string
 	streamName   string
@@ -228,6 +223,7 @@ type workEvent struct {
 	maxTimeStamp int64
 }
 
+// workerEvents is a function to get events from a log stream
 func (a *App) workerEvents(ctx context.Context, wg *sync.WaitGroup, work <-chan workEvent) error {
 	var errGrp errgroup.Group
 	var currentWorkers atomic.Int32
@@ -244,9 +240,7 @@ func (a *App) workerEvents(ctx context.Context, wg *sync.WaitGroup, work <-chan 
 			return err
 		})
 	}
-	// fmt.Println("Waiting for workers to finish")
 	err := errGrp.Wait()
-	// fmt.Println("Workers finished")
 	wg.Done()
 	return err
 }
