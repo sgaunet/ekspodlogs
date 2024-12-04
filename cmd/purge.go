@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -21,11 +20,16 @@ var purgeCmd = &cobra.Command{
 		InitDB() // Initialize the database and exit if an error occurs
 		defer s.Close()
 
-		fmt.Println("TODO: handle purge of the database with the parameter ssoProfile")
-		fmt.Println("TODO: handle purge of the database with the parameter startDate")
-		fmt.Println("TODO: handle purge of the database with the parameter endDate")
+		if groupName != "" || podName != "" || ssoProfile != "" {
+			err = s.PurgeSpecificLogPodLogs(ctx, ssoProfile, groupName, podName)
+			if err != nil {
+				logrus.Errorln(err.Error())
+				os.Exit(1)
+			}
+			os.Exit(0)
+		}
 		// Purge DB
-		err = s.Purge(ctx)
+		err = s.PurgeAll(ctx)
 		if err != nil {
 			logrus.Errorln(err.Error())
 			os.Exit(1)
