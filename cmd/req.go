@@ -19,20 +19,19 @@ var reqCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		var cfg aws.Config // Configuration to connect to AWS API
 		var err error
-
 		ctx := context.Background()
-		fmt.Println("group:", groupName)
-		fmt.Println("profile:", ssoProfile)
-		fmt.Println("begin:", beginDate)
-		fmt.Println("end:", endDate)
+
+		if beginDate == "" || endDate == "" {
+			fmt.Fprintln(os.Stderr, "Mandatory options : -b and -e")
+			cmd.Help()
+			os.Exit(1)
+		}
 
 		b, e, err := ConvertTimeToCarbon(beginDate, endDate)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
-		fmt.Println("begin:", b)
-		fmt.Println("end:", e)
 
 		InitDB() // Initialize the database and exit if an error occurs
 		defer s.Close()
@@ -65,7 +64,7 @@ var reqCmd = &cobra.Command{
 			}
 		}
 
-		res, err := app.GetEvents(ctx, ssoProfile, groupName, b, e)
+		res, err := app.GetEvents(ctx, ssoProfile, groupName, podName, b, e)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			s.Close()
