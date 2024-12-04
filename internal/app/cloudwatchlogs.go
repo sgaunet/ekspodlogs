@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -12,8 +11,8 @@ import (
 	"github.com/dromara/carbon/v2"
 )
 
-// Recursive function that will return if the groupName parameter has been found or not
-func (a *App) findLogGroup(groupName string, NextToken string) bool {
+// Recursive function that will return true if the groupName parameter has been found or not
+func (a *App) findLogGroup(groupName string, NextToken string) (bool, error) {
 	var params cloudwatchlogs.DescribeLogGroupsInput
 
 	if len(NextToken) != 0 {
@@ -21,25 +20,23 @@ func (a *App) findLogGroup(groupName string, NextToken string) bool {
 	}
 	res, err := a.clientCloudwatchlogs.DescribeLogGroups(context.TODO(), &params)
 	if err != nil {
-		a.appLog.Errorln(err.Error())
-		os.Exit(1)
+		return false, fmt.Errorf("error while calling DescribeLogGroups: %w", err)
 	}
 	for _, i := range res.LogGroups {
 		a.appLog.Debugf("## Parse Log Group Name : %s\n", *i.LogGroupName)
 		if *i.LogGroupName == groupName {
-			return true
+			return true, nil
 		}
 	}
 	if res.NextToken == nil {
 		// No token given, end of potential recursive call to parse the list of loggroups
-		return false
-	} else {
-		return a.findLogGroup(groupName, *res.NextToken)
+		return false, nil
 	}
+	return a.findLogGroup(groupName, *res.NextToken)
 }
 
-// Parse every events of every streams of a group
-// Recursive function
+// parseAllStreamsOfGroup parses every events of every streams of a group
+// It's a recursive function
 func (a *App) parseAllStreamsOfGroup(ctx context.Context, groupName string, logStream string, nextToken string, minTimeStamp int64, maxTimeStamp int64) ([]types.LogStream, error) {
 	var paramsLogStream cloudwatchlogs.DescribeLogStreamsInput
 	var stopToParseLogStream bool
@@ -57,13 +54,8 @@ func (a *App) parseAllStreamsOfGroup(ctx context.Context, groupName string, logS
 	}
 	// https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs#Client.DescribeLogStreams
 	// now := time.Now()
-	// fmt.Println("Waiting for rate limit")
-	// fmt.Println("Duration:", time.Since(now))
-
-	// fmt.Println("Calling DescribeLogStreams")
 	a.logGroupRateLimit.Wait(ctx)
 	res2, err := a.clientCloudwatchlogs.DescribeLogStreams(context.TODO(), &paramsLogStream)
-	// fmt.Println("Called DescribeLogStreams")
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +127,10 @@ func (a *App) recurseListLogGroup(ctx context.Context, client *cloudwatchlogs.Cl
 
 // function that parses every streams of loggroup groupName
 func (a *App) findLogStream(ctx context.Context, groupName string, logStream string, minTimeStampInMs int64, maxTimeStampInMs int64) ([]types.LogStream, error) {
-	doesGroupNameExists := a.findLogGroup(groupName, "")
+	doesGroupNameExists, err := a.findLogGroup(groupName, "")
+	if err != nil {
+		return nil, err
+	}
 	if !doesGroupNameExists {
 		err := fmt.Errorf("GroupName %s not found", groupName)
 		a.appLog.Errorln(err.Error())
@@ -144,5 +139,4 @@ func (a *App) findLogStream(ctx context.Context, groupName string, logStream str
 
 	logstreams, err := a.parseAllStreamsOfGroup(ctx, groupName, logStream, "", minTimeStampInMs, maxTimeStampInMs)
 	return logstreams, err
-	// return revertSliceOrder(logstreams), err
 }
