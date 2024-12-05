@@ -8,7 +8,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/sgaunet/ekspodlogs/internal/app"
 	"github.com/sgaunet/ekspodlogs/pkg/views"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -20,28 +19,13 @@ var syncCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		var cfg aws.Config // Configuration to connect to AWS API
 		var err error
-
 		ctx := context.Background()
-		fmt.Println("group:", groupName)
-		fmt.Println("profile:", ssoProfile)
-		fmt.Println("pod:", podName)
-		fmt.Println("begin:", beginDate)
-		fmt.Println("end:", endDate)
 
 		b, e, err := ConvertTimeToCarbon(beginDate, endDate)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
-		fmt.Println("begin:", b)
-		fmt.Println("end:", e)
-
-		// Get logs, controls parameters
-		// if len(logStream) == 0 {
-		// 	fmt.Fprintln(os.Stderr, "Mandatory option : -l")
-		// 	flag.PrintDefaults()
-		// 	os.Exit(1)
-		// }
 
 		cfg, err = InitAWSConfig(ctx, ssoProfile)
 		if err != nil {
@@ -55,7 +39,7 @@ var syncCmd = &cobra.Command{
 		// Purge DB
 		err = s.PurgeSpecificPeriod(ctx, ssoProfile, groupName, podName, b, e)
 		if err != nil {
-			logrus.Errorln(err.Error())
+			fmt.Fprintln(os.Stderr, err.Error())
 			defer s.Close()
 			os.Exit(1)
 		}

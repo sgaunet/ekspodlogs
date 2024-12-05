@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +23,7 @@ var purgeCmd = &cobra.Command{
 		if groupName != "" || podName != "" || ssoProfile != "" {
 			err = s.PurgeSpecificLogPodLogs(ctx, ssoProfile, groupName, podName)
 			if err != nil {
-				logrus.Errorln(err.Error())
+				fmt.Fprintln(os.Stderr, err.Error())
 				os.Exit(1)
 			}
 			os.Exit(0)
@@ -31,7 +31,7 @@ var purgeCmd = &cobra.Command{
 		// Purge DB
 		err = s.PurgeAll(ctx)
 		if err != nil {
-			logrus.Errorln(err.Error())
+			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
 	},

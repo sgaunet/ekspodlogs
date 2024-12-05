@@ -53,7 +53,7 @@ var reqCmd = &cobra.Command{
 			// No groupName specified, try to find it automatically
 			groupName, err = app.FindLogGroupAuto(ctx)
 			if groupName == "" {
-				fmt.Fprintln(os.Stderr, "Log group not found automatically (add option -g)")
+				fmt.Fprintln(os.Stderr, "Log group not found automatically (add option -g): ", err.Error())
 				s.Close()
 				os.Exit(1)
 			}
@@ -71,7 +71,7 @@ var reqCmd = &cobra.Command{
 			os.Exit(1)
 		}
 		for _, r := range res {
-			fmt.Println(r)
+			fmt.Println(r.EventTime.Format("2006-01-02 15:05:05 MST"), r.NamespaceName, r.PodName, r.Log)
 		}
 	},
 }
