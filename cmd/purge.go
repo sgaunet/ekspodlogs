@@ -12,7 +12,8 @@ import (
 var purgeCmd = &cobra.Command{
 	Use:   "purge",
 	Short: "Purge the local database",
-	Long:  `Purge the local database. It will remove all the entries in the local database.`,
+	Long: `Purge the local database. It will remove all the entries in the local database.
+Try option -h to see option in order to to purge only specific logs.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		var err error
 
