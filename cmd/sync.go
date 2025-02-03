@@ -21,6 +21,11 @@ var syncCmd = &cobra.Command{
 		var err error
 		ctx := context.Background()
 
+		if beginDate == "" || endDate == "" {
+			fmt.Fprintln(os.Stderr, "begin and end dates must be specified")
+			os.Exit(1)
+		}
+
 		b, e, err := ConvertTimeToCarbon(beginDate, endDate)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
