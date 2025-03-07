@@ -9,7 +9,7 @@ builds:
   - env:
       - CGO_ENABLED=1
     ldflags:
-      - -X main.version={{.Version}}
+      - -X github.com/sgaunet/ekspodlogs/cmd.version={{.Version}}
     goos:
       - linux
     goarch:
