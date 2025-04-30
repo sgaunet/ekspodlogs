@@ -15,17 +15,17 @@ import (
 )
 
 // ConvertTimeToCarbon converts the begin and end date to carbon.Carbon
-func ConvertTimeToCarbon(beginDate, endDate string) (carbon.Carbon, carbon.Carbon, error) {
+func ConvertTimeToCarbon(beginDate, endDate string) (*carbon.Carbon, *carbon.Carbon, error) {
 	b := carbon.Parse(beginDate)
 	if b.Error != nil {
-		return carbon.Carbon{}, carbon.Carbon{}, fmt.Errorf("invalid begin date: %w", b.Error)
+		return nil, nil, fmt.Errorf("invalid begin date: %w", b.Error)
 	}
 	e := carbon.Parse(endDate)
 	if e.Error != nil {
-		return carbon.Carbon{}, carbon.Carbon{}, fmt.Errorf("invalid end date: %w", e.Error)
+		return nil, nil, fmt.Errorf("invalid end date: %w", e.Error)
 	}
 	if b.Gt(e) {
-		return carbon.Carbon{}, carbon.Carbon{}, errors.New("begin date is after end date")
+		return nil, nil, errors.New("begin date is after end date")
 	}
 	return b, e, nil
 }

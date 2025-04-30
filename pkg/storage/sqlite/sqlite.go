@@ -71,7 +71,7 @@ func (s *Storage) PurgeAll(ctx context.Context) error {
 	return s.queries.PurgeAll(ctx)
 }
 
-func (s *Storage) PurgeSpecificPeriod(ctx context.Context, profile string, loggroup string, podName string, beginDate carbon.Carbon, endDate carbon.Carbon) error {
+func (s *Storage) PurgeSpecificPeriod(ctx context.Context, profile string, loggroup string, podName string, beginDate *carbon.Carbon, endDate *carbon.Carbon) error {
 	podName = "%" + podName + "%"
 	err := s.queries.PurgeSpecificPeriod(ctx, database.PurgeSpecificPeriodParams{
 		Profile:   profile,
@@ -115,7 +115,7 @@ func (s *Storage) GetLogsOfPod(ctx context.Context, profile string, logGroup str
 	})
 }
 
-func (s *Storage) GetLogs(ctx context.Context, logGroup string, profile string, podName string, beginDate carbon.Carbon, endDate carbon.Carbon) ([]database.Log, error) {
+func (s *Storage) GetLogs(ctx context.Context, logGroup string, profile string, podName string, beginDate *carbon.Carbon, endDate *carbon.Carbon) ([]database.Log, error) {
 	podName = "%" + podName + "%"
 	return s.queries.GetLogs(ctx, database.GetLogsParams{
 		Begindate: beginDate.StdTime(),
