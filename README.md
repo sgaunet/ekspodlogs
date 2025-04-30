@@ -93,6 +93,27 @@ $ ekspodlogs req -p dev -n mypodname -b "2021-01-01 00:00:00" -e "2021-01-01 23:
 ...
 ```
 
+## Dependency
+
+### Ubuntu/Debian
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libsqlite3-dev
+```
+
+### Fedora/RHEL/CentOS
+
+```bash
+sudo dnf install -y sqlite-devel
+```
+
+### Arch Linux
+
+```bash
+sudo pacman -Syu sqlite
+```
+
 ## Debug
 
 Set env variable DEBUGLEVEL to one of this value :
