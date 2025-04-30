@@ -71,7 +71,7 @@ var reqCmd = &cobra.Command{
 			os.Exit(1)
 		}
 		for _, r := range res {
-			fmt.Println(r.EventTime.Format("2006-01-02 15:05:05 MST"), r.NamespaceName, r.PodName, r.Log)
+			fmt.Println(r.NamespaceName, r.PodName, r.Log)
 		}
 	},
 }
