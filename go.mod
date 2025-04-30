@@ -1,6 +1,6 @@
 module github.com/sgaunet/ekspodlogs
 
-go 1.24.0
+go 1.24.1
 
 tool github.com/sqlc-dev/sqlc/cmd/sqlc
 
