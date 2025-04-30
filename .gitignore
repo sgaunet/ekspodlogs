@@ -2,3 +2,4 @@ dist
 ekspodlogs
 .task
 internal/database
+.devbox
