@@ -21,31 +21,12 @@ var syncCmd = &cobra.Command{
 		var err error
 		ctx := context.Background()
 
-		if beginDate == "" || endDate == "" {
-			fmt.Fprintln(os.Stderr, "begin and end dates must be specified")
-			os.Exit(1)
-		}
-
-		b, e, err := ConvertTimeToCarbon(beginDate, endDate)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
+		InitDB() // Initialize the database and exit if an error occurs
+		defer s.Close()
 
 		cfg, err = InitAWSConfig(ctx, ssoProfile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "unable to load SDK config: %s", err.Error())
-			os.Exit(1)
-		}
-
-		InitDB() // Initialize the database and exit if an error occurs
-		defer s.Close()
-
-		// Purge DB
-		err = s.PurgeSpecificPeriod(ctx, ssoProfile, groupName, podName, b, e)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			defer s.Close()
 			os.Exit(1)
 		}
 
@@ -70,6 +51,25 @@ var syncCmd = &cobra.Command{
 				defer s.Close()
 				os.Exit(1)
 			}
+		}
+
+		if beginDate == "" || endDate == "" {
+			fmt.Fprintln(os.Stderr, "begin and end dates must be specified")
+			os.Exit(1)
+		}
+
+		b, e, err := ConvertTimeToCarbon(beginDate, endDate)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+
+		// Purge DB
+		err = s.PurgeSpecificPeriod(ctx, ssoProfile, groupName, podName, b, e)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			defer s.Close()
+			os.Exit(1)
 		}
 
 		err = app.PrintEvents(ctx, groupName, podName, b.StdTime(), e.StdTime())
