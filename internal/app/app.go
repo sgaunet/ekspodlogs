@@ -120,9 +120,13 @@ func (a *App) getEvents(ctx context.Context, groupName string, streamName string
 	}
 
 	a.appLog.Debugln("             nextToken=", nextToken)
-	a.appLog.Debugln(" *res.NextForwardToken=", *res.NextForwardToken)
-	a.appLog.Debugln("*res.NextBackwardToken=", *res.NextBackwardToken)
-	if *res.NextForwardToken != nextToken {
+	if res.NextForwardToken != nil {
+		a.appLog.Debugln(" *res.NextForwardToken=", *res.NextForwardToken)
+	}
+	if res.NextBackwardToken != nil {
+		a.appLog.Debugln("*res.NextBackwardToken=", *res.NextBackwardToken)
+	}
+	if res.NextForwardToken != nil && *res.NextForwardToken != nextToken {
 		return a.getEvents(ctx, groupName, streamName, minTimeStamp, maxTimeStamp, *res.NextForwardToken)
 	}
 	return nil
