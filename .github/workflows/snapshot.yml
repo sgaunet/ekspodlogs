@@ -22,12 +22,17 @@ jobs:
         with:
           go-version: '>=1.24'
 
-      - name: Install devbox
-        uses: jetify-com/devbox-install-action@v0.12.0
+      - name: Install Task
+        uses: arduino/setup-task@v2
         with:
-          enable-cache: true
-          devbox-version: 0.14.0
-  
+          version: 3.x # or a specific version like 3.32.0
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          install-only: true
+          
       -
         # Add support for more platforms with QEMU (optional)
         # https://github.com/docker/setup-qemu-action
@@ -44,11 +49,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install prerequisites
+      - name: Create snapshot
         shell: /usr/bin/bash {0}
         run: |
-          devbox install
-          devbox run snapshot
+          task snapshot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Your GoReleaser Pro key, if you are using the 'goreleaser-pro' distribution
