@@ -27,7 +27,12 @@ jobs:
         with:
           version: 3.x # or a specific version like 3.32.0
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-        
+
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          install-only: true
+          
       -
         # Add support for more platforms with QEMU (optional)
         # https://github.com/docker/setup-qemu-action
