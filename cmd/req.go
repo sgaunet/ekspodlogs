@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/sgaunet/ekspodlogs/internal/app"
@@ -34,7 +36,32 @@ var reqCmd = &cobra.Command{
 		}
 
 		InitDB() // Initialize the database and exit if an error occurs
-		defer s.Close()
+
+		// Set up signal handling for graceful shutdown
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+		
+		// Create a context that will be canceled when a signal is received
+		ctx, cancel := context.WithCancel(ctx)
+		
+		// Start a goroutine to handle signals
+		go func() {
+			sig := <-sigCh
+			fmt.Fprintf(os.Stderr, "Received signal %v, shutting down gracefully...\n", sig)
+			// Cancel the context to signal all operations to stop
+			cancel()
+			// Close the database connection
+			s.Close()
+			os.Exit(0)
+		}()
+		
+		// Ensure database is closed when the function returns normally
+		defer func() {
+			// Cancel the context and signal handler
+			cancel()
+			// Close database connection
+			s.Close()
+		}()
 
 		cfg, err = InitAWSConfig(ctx, ssoProfile)
 		if err != nil {
