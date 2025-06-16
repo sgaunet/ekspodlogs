@@ -1,6 +1,8 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/sgaunet/ekspodlogs)](https://goreportcard.com/report/github.com/sgaunet/ekspodlogs)
 [![GitHub release](https://img.shields.io/github/release/sgaunet/ekspodlogs.svg)](https://github.com/sgaunet/ekspodlogs/releases/latest)
 ![GitHub Downloads](https://img.shields.io/github/downloads/sgaunet/ekspodlogs/total)
+[![Snapshot](https://github.com/sgaunet/ekspodlogs/actions/workflows/snapshot.yml/badge.svg)](https://github.com/sgaunet/ekspodlogs/actions/workflows/snapshot.yml)
+[![Release](https://github.com/sgaunet/ekspodlogs/actions/workflows/release.yml/badge.svg)](https://github.com/sgaunet/ekspodlogs/actions/workflows/release.yml)
 [![GoDoc](https://godoc.org/github.com/sgaunet/ekspodlogs?status.svg)](https://godoc.org/github.com/sgaunet/ekspodlogs)
 [![License](https://img.shields.io/github/license/sgaunet/ekspodlogs.svg)](LICENSE)
 
