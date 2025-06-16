@@ -14,13 +14,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// ConvertTimeToCarbon converts the begin and end date to carbon.Carbon
+// ConvertTimeToCarbon converts the begin and end date to carbon.Carbon, treating inputs as UTC
 func ConvertTimeToCarbon(beginDate, endDate string) (*carbon.Carbon, *carbon.Carbon, error) {
-	b := carbon.Parse(beginDate)
+	b := carbon.Parse(beginDate).SetTimezone("UTC")
 	if b.Error != nil {
 		return nil, nil, fmt.Errorf("invalid begin date: %w", b.Error)
 	}
-	e := carbon.Parse(endDate)
+	e := carbon.Parse(endDate).SetTimezone("UTC")
 	if e.Error != nil {
 		return nil, nil, fmt.Errorf("invalid end date: %w", e.Error)
 	}
