@@ -39,7 +39,9 @@ var syncCmd = &cobra.Command{
 			// Cancel the context to signal all operations to stop
 			cancel()
 			// Close the database connection
-			s.Close()
+			if err := s.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err)
+			}
 			os.Exit(0)
 		}()
 		
@@ -48,7 +50,9 @@ var syncCmd = &cobra.Command{
 			// Cancel the context and signal handler
 			cancel()
 			// Close database connection
-			s.Close()
+			if err := s.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err)
+			}
 		}()
 
 		cfg, err = InitAWSConfig(ctx, ssoProfile)
@@ -61,7 +65,7 @@ var syncCmd = &cobra.Command{
 		app := app.New(cfg, ssoProfile, s, tui)
 		if err = app.PrintID(); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
-			defer s.Close()
+			defer func() { if err := s.Close(); err != nil { fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err) } }()
 			os.Exit(1)
 		}
 
@@ -70,12 +74,16 @@ var syncCmd = &cobra.Command{
 			groupName, err = app.FindLogGroupAuto(ctx)
 			if groupName == "" {
 				fmt.Fprintln(os.Stderr, "Log group not found automatically (add option -g)")
-				defer s.Close()
+				if err := s.Close(); err != nil {
+					fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err)
+				}
 				os.Exit(1)
 			}
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%v\n", err.Error())
-				defer s.Close()
+				if err := s.Close(); err != nil {
+					fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err)
+				}
 				os.Exit(1)
 			}
 		}
@@ -95,14 +103,14 @@ var syncCmd = &cobra.Command{
 		err = s.PurgeSpecificPeriod(ctx, ssoProfile, groupName, podName, b, e)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
-			defer s.Close()
+			defer func() { if err := s.Close(); err != nil { fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err) } }()
 			os.Exit(1)
 		}
 
 		err = app.PrintEvents(ctx, groupName, podName, b.StdTime(), e.StdTime())
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
-			defer s.Close()
+			defer func() { if err := s.Close(); err != nil { fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err) } }()
 			os.Exit(1)
 		}
 	},

@@ -107,7 +107,9 @@ func CreateDBIfNotExists(dbPath string) (*sqlite.Storage, error) {
 		if err != nil {
 			return nil, err
 		}
-		s.Close()
+		if err := s.Close(); err != nil {
+			return nil, fmt.Errorf("failed to close database: %w", err)
+		}
 	}
 
 	s, err := sqlite.NewStorage(dbPath)

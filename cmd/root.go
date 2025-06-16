@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/sgaunet/ekspodlogs/pkg/storage/sqlite"
@@ -30,7 +31,9 @@ Then, you will have to synchronise the local database with the logs of cloudwatc
 
 Finally, you will be able to request the logs of a specific logstream for a period.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
+		if err := cmd.Help(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error displaying help: %v\n", err)
+		}
 	},
 }
 
