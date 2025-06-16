@@ -1,0 +1,17 @@
+# golangci-lint configuration
+version: "2"
+
+run:
+  tests: false
+
+linters:
+  disable:
+    - wsl
+    - nlreturn
+    - depguard
+    - gochecknoinits
+    - gochecknoglobals
+    - forbidigo
+    - varnamelen
+    - exhaustruct
+    - wrapcheck

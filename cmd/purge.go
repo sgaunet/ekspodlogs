@@ -36,7 +36,9 @@ Try option -h to see option in order to to purge only specific logs.`,
 			// Cancel the context to signal all operations to stop
 			cancel()
 			// Close the database connection
-			s.Close()
+			if err := s.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err)
+			}
 			os.Exit(0)
 		}()
 		
@@ -45,7 +47,9 @@ Try option -h to see option in order to to purge only specific logs.`,
 			// Cancel the context and signal handler
 			cancel()
 			// Close database connection
-			s.Close()
+			if err := s.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err)
+			}
 		}()
 
 		if groupName != "" || podName != "" || ssoProfile != "" {

@@ -28,7 +28,7 @@ type Storage struct {
 func NewStorage(dbFile string) (*Storage, error) {
 	db, err := sql.Open("sqlite3", dbFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open SQLite database: %w", err)
 	}
 	return &Storage{
 		Now:     time.Now,
@@ -43,7 +43,10 @@ func (s *Storage) SetNow(now func() time.Time) {
 }
 
 func (s *Storage) Close() error {
-	return s.db.Close()
+	if err := s.db.Close(); err != nil {
+		return fmt.Errorf("failed to close SQLite database: %w", err)
+	}
+	return nil
 }
 
 func (s *Storage) Init() error {
@@ -54,7 +57,7 @@ func (s *Storage) Init() error {
 	fmt.Println("Migrations:")
 	migrations, err := db.FindMigrations()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to find migrations: %w", err)
 	}
 	for _, m := range migrations {
 		fmt.Println(m.Version, m.FilePath)
@@ -62,13 +65,16 @@ func (s *Storage) Init() error {
 	db.AutoDumpSchema = false
 	err = db.CreateAndMigrate()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create and migrate database: %w", err)
 	}
 	return nil
 }
 
 func (s *Storage) PurgeAll(ctx context.Context) error {
-	return s.queries.PurgeAll(ctx)
+	if err := s.queries.PurgeAll(ctx); err != nil {
+		return fmt.Errorf("failed to purge all logs: %w", err)
+	}
+	return nil
 }
 
 func (s *Storage) PurgeSpecificPeriod(ctx context.Context, profile string, loggroup string, podName string, beginDate *carbon.Carbon, endDate *carbon.Carbon) error {
@@ -80,7 +86,10 @@ func (s *Storage) PurgeSpecificPeriod(ctx context.Context, profile string, loggr
 		Begindate: beginDate.StdTime(),
 		Enddate:   endDate.StdTime(),
 	})
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to purge specific period: %w", err)
+	}
+	return nil
 }
 
 func (s *Storage) PurgeSpecificLogPodLogs(ctx context.Context, profile string, loggroup string, podName string) error {
@@ -90,11 +99,14 @@ func (s *Storage) PurgeSpecificLogPodLogs(ctx context.Context, profile string, l
 		Loggroup: loggroup,
 		PodName:  podName,
 	})
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to purge specific log pod logs: %w", err)
+	}
+	return nil
 }
 
 func (s *Storage) AddLog(ctx context.Context, profile string, loggroup string, eventTime time.Time, podName, containerName, nameSpace, log string) error {
-	return s.queries.InsertLog(ctx, database.InsertLogParams{
+	if err := s.queries.InsertLog(ctx, database.InsertLogParams{
 		EventTime:     eventTime,
 		Profile:       profile,
 		Loggroup:      loggroup,
@@ -102,26 +114,37 @@ func (s *Storage) AddLog(ctx context.Context, profile string, loggroup string, e
 		ContainerName: containerName,
 		NamespaceName: nameSpace,
 		Log:           log,
-	})
+	}); err != nil {
+		return fmt.Errorf("failed to insert log: %w", err)
+	}
+	return nil
 }
 
 func (s *Storage) GetLogsOfPod(ctx context.Context, profile string, logGroup string, podName string, beginDate, endDate time.Time) ([]database.Log, error) {
-	return s.queries.GetLogsOfPod(ctx, database.GetLogsOfPodParams{
+	logs, err := s.queries.GetLogsOfPod(ctx, database.GetLogsOfPodParams{
 		Begindate: beginDate,
 		Enddate:   endDate,
 		Loggroup:  logGroup,
 		Profile:   profile,
 		PodName:   podName,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get logs of pod: %w", err)
+	}
+	return logs, nil
 }
 
 func (s *Storage) GetLogs(ctx context.Context, logGroup string, profile string, podName string, beginDate *carbon.Carbon, endDate *carbon.Carbon) ([]database.Log, error) {
 	podName = "%" + podName + "%"
-	return s.queries.GetLogs(ctx, database.GetLogsParams{
+	logs, err := s.queries.GetLogs(ctx, database.GetLogsParams{
 		Begindate: beginDate.StdTime(),
 		Enddate:   endDate.StdTime(),
 		Loggroup:  logGroup,
 		Profile:   profile,
 		PodName:   podName,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get logs: %w", err)
+	}
+	return logs, nil
 }

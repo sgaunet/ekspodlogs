@@ -54,7 +54,9 @@ func (a *App) parseAllStreamsOfGroup(ctx context.Context, groupName string, logS
 	}
 	// https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs#Client.DescribeLogStreams
 	// now := time.Now()
-	a.logGroupRateLimit.Wait(ctx)
+	if err := a.logGroupRateLimit.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limit wait error: %w", err)
+	}
 	res2, err := a.clientCloudwatchlogs.DescribeLogStreams(context.TODO(), &paramsLogStream)
 	if err != nil {
 		return nil, err
@@ -99,7 +101,9 @@ func (a *App) recurseListLogGroup(ctx context.Context, client *cloudwatchlogs.Cl
 	if len(NextToken) != 0 {
 		params.NextToken = &NextToken
 	}
-	a.logGroupRateLimit.Wait(ctx)
+	if err := a.logGroupRateLimit.Wait(ctx); err != nil {
+		return loggroups, fmt.Errorf("rate limit wait error: %w", err)
+	}
 	res, err := client.DescribeLogGroups(context.TODO(), &params)
 	if err != nil {
 		return loggroups, err

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"regexp"
 	"sync"
 	"sync/atomic"
@@ -70,7 +69,7 @@ func (a *App) PrintID() error {
 		&sts.GetCallerIdentityInput{},
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get caller identity: %w", err)
 	}
 	a.appLog.Debugf("Account: %s\n", aws.ToString(identity.Account))
 	a.appLog.Debugf("UserID: %s\n", aws.ToString(identity.UserId))
@@ -98,24 +97,26 @@ func (a *App) getEvents(ctx context.Context, groupName string, streamName string
 	}
 
 	a.appLog.Debugf("\n**Parse stream** : %s\n", streamName)
-	a.eventsRateLimit.Wait(ctx)
+	if err := a.eventsRateLimit.Wait(ctx); err != nil {
+		return fmt.Errorf("rate limit wait error: %w", err)
+	}
 	res, err := a.clientCloudwatchlogs.GetLogEvents(ctx, &input)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get log events: %w", err)
 	}
 
 	for _, k := range res.Events {
 		var lineOfLog fluentDockerLog
 		err := json.Unmarshal([]byte(*k.Message), &lineOfLog)
 		if err != nil {
-			a.appLog.Errorln(err.Error(), "Are you sure to parse logs of a container ? (done by fluentd)")
-			return err
+			a.appLog.Errorln(err.Error(), "Are you sure to parse logs of a container? (done by fluentd)")
+			return fmt.Errorf("failed to unmarshal log message: %w", err)
 		}
 		timeT := time.Unix(*k.Timestamp/1000, 0)
 		// fmt.Printf("%s -- %s -- %s\n", timeT, lineOfLog.Kubernetes.ContainerName, lineOfLog.Log)
 		err = a.queries.AddLog(ctx, a.profileName, groupName, timeT, lineOfLog.Kubernetes.PodName, lineOfLog.Kubernetes.ContainerName, lineOfLog.Kubernetes.NamespaceName, lineOfLog.Log)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to add log: %w", err)
 		}
 	}
 
@@ -178,7 +179,7 @@ func (a *App) PrintEvents(ctx context.Context, groupName string, logStream strin
 	a.tui.StopSpinnerRetrieveLogStreams()
 	err = a.tui.StartSpinnerScanLogStreams()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error spinner: %s", err)
+		return fmt.Errorf("failed to start spinner: %w", err)
 	}
 
 	var wg sync.WaitGroup
@@ -198,9 +199,6 @@ func (a *App) PrintEvents(ctx context.Context, groupName string, logStream strin
 		}
 		chWorker <- work
 		a.tui.IncNbStreamsScanned()
-		if err != nil {
-			return err
-		}
 	}
 	close(chWorker)
 	wg.Wait()
@@ -214,7 +212,7 @@ func (a *App) PrintEvents(ctx context.Context, groupName string, logStream strin
 func (a *App) GetEvents(ctx context.Context, profile string, groupName string, podName string, beginDate *carbon.Carbon, endDate *carbon.Carbon) ([]database.Log, error) {
 	res, err := a.queries.GetLogs(ctx, groupName, profile, podName, beginDate, endDate)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get logs: %w", err)
 	}
 	return res, nil
 }
@@ -246,5 +244,8 @@ func (a *App) workerEvents(ctx context.Context, wg *sync.WaitGroup, work <-chan 
 	}
 	err := errGrp.Wait()
 	wg.Done()
-	return err
+	if err != nil {
+		return fmt.Errorf("worker error: %w", err)
+	}
+	return nil
 }
