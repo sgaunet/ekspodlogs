@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/amacneil/dbmate/v2/pkg/dbmate"
@@ -23,6 +24,9 @@ type Storage struct {
 	db      *sql.DB
 	dbFile  string
 	queries *database.Queries
+	closeOnce sync.Once
+	closed    bool
+	mu        sync.RWMutex
 }
 
 func NewStorage(dbFile string) (*Storage, error) {
@@ -43,10 +47,19 @@ func (s *Storage) SetNow(now func() time.Time) {
 }
 
 func (s *Storage) Close() error {
-	if err := s.db.Close(); err != nil {
-		return fmt.Errorf("failed to close SQLite database: %w", err)
-	}
-	return nil
+	var err error
+	s.closeOnce.Do(func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.closed {
+			return
+		}
+		s.closed = true
+		if closeErr := s.db.Close(); closeErr != nil {
+			err = fmt.Errorf("failed to close SQLite database: %w", closeErr)
+		}
+	})
+	return err
 }
 
 func (s *Storage) Init() error {

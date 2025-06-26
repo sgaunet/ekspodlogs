@@ -35,10 +35,6 @@ Try option -h to see option in order to to purge only specific logs.`,
 			fmt.Fprintf(os.Stderr, "Received signal %v, shutting down gracefully...\n", sig)
 			// Cancel the context to signal all operations to stop
 			cancel()
-			// Close the database connection
-			if err := s.Close(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err)
-			}
 			os.Exit(0)
 		}()
 		

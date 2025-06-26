@@ -52,10 +52,6 @@ var reqCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, "Received signal %v, shutting down gracefully...\n", sig)
 			// Cancel the context to signal all operations to stop
 			cancel()
-			// Close the database connection
-			if err := s.Close(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err)
-			}
 			os.Exit(0)
 		}()
 		
@@ -72,9 +68,6 @@ var reqCmd = &cobra.Command{
 		cfg, err = InitAWSConfig(ctx, ssoProfile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "unable to load SDK config: %s", err.Error())
-			if err := s.Close(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err)
-			}
 			os.Exit(1)
 		}
 		tui := views.NewTerminalView()
@@ -89,16 +82,10 @@ var reqCmd = &cobra.Command{
 			groupName, err = app.FindLogGroupAuto(ctx)
 			if groupName == "" {
 				fmt.Fprintln(os.Stderr, "Log group not found automatically (add option -g): ", err.Error())
-				if err := s.Close(); err != nil {
-					fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err)
-				}
 				os.Exit(1)
 			}
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%v\n", err.Error())
-				if err := s.Close(); err != nil {
-					fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err)
-				}
 				os.Exit(1)
 			}
 		}
@@ -106,9 +93,6 @@ var reqCmd = &cobra.Command{
 		res, err := app.GetEvents(ctx, ssoProfile, groupName, podName, b, e)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
-			if err := s.Close(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error closing database: %v\n", err)
-			}
 			os.Exit(1)
 		}
 		for _, r := range res {
