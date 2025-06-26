@@ -23,7 +23,7 @@ import (
 )
 
 // quota for AWS API: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/cloudwatch_limits_cwl.html
-const maxEventsAPICallPerSecond = 30
+const maxEventsAPICallPerSecond = 5000
 const maxLogGroupAPICALLPerSecond = 10
 
 // App is the main structure of the application
