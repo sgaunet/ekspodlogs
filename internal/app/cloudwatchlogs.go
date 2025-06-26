@@ -12,13 +12,13 @@ import (
 )
 
 // Recursive function that will return true if the groupName parameter has been found or not
-func (a *App) findLogGroup(groupName string, NextToken string) (bool, error) {
+func (a *App) findLogGroup(ctx context.Context, groupName string, NextToken string) (bool, error) {
 	var params cloudwatchlogs.DescribeLogGroupsInput
 
 	if len(NextToken) != 0 {
 		params.NextToken = &NextToken
 	}
-	res, err := a.clientCloudwatchlogs.DescribeLogGroups(context.TODO(), &params)
+	res, err := a.clientCloudwatchlogs.DescribeLogGroups(ctx, &params)
 	if err != nil {
 		return false, fmt.Errorf("error while calling DescribeLogGroups: %w", err)
 	}
@@ -32,12 +32,23 @@ func (a *App) findLogGroup(groupName string, NextToken string) (bool, error) {
 		// No token given, end of potential recursive call to parse the list of loggroups
 		return false, nil
 	}
-	return a.findLogGroup(groupName, *res.NextToken)
+	return a.findLogGroup(ctx, groupName, *res.NextToken)
 }
 
 // parseAllStreamsOfGroup parses every events of every streams of a group
-// It's a recursive function
+// It's a recursive function with pagination bounds
 func (a *App) parseAllStreamsOfGroup(ctx context.Context, groupName string, logStream string, nextToken string, minTimeStamp int64, maxTimeStamp int64) ([]types.LogStream, error) {
+	return a.parseAllStreamsOfGroupWithDepth(ctx, groupName, logStream, nextToken, minTimeStamp, maxTimeStamp, 0)
+}
+
+// parseAllStreamsOfGroupWithDepth handles pagination with depth limiting
+func (a *App) parseAllStreamsOfGroupWithDepth(ctx context.Context, groupName string, logStream string, nextToken string, minTimeStamp int64, maxTimeStamp int64, depth int) ([]types.LogStream, error) {
+	const maxDepth = 1000 // Prevent infinite recursion
+	const maxStreams = 10000 // Prevent memory exhaustion
+	
+	if depth > maxDepth {
+		return nil, fmt.Errorf("maximum pagination depth exceeded (%d)", maxDepth)
+	}
 	var paramsLogStream cloudwatchlogs.DescribeLogStreamsInput
 	var stopToParseLogStream bool
 	var logStreams []types.LogStream
@@ -57,7 +68,7 @@ func (a *App) parseAllStreamsOfGroup(ctx context.Context, groupName string, logS
 	if err := a.logGroupRateLimit.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limit wait error: %w", err)
 	}
-	res2, err := a.clientCloudwatchlogs.DescribeLogStreams(context.TODO(), &paramsLogStream)
+	res2, err := a.clientCloudwatchlogs.DescribeLogStreams(ctx, &paramsLogStream)
 	if err != nil {
 		return nil, err
 	}
@@ -85,18 +96,32 @@ func (a *App) parseAllStreamsOfGroup(ctx context.Context, groupName string, logS
 		}
 	}
 
-	if res2.NextToken != nil && !stopToParseLogStream {
-		l, err := a.parseAllStreamsOfGroup(ctx, groupName, logStream, *res2.NextToken, minTimeStamp, maxTimeStamp)
+	if res2.NextToken != nil && !stopToParseLogStream && len(logStreams) < maxStreams {
+		l, err := a.parseAllStreamsOfGroupWithDepth(ctx, groupName, logStream, *res2.NextToken, minTimeStamp, maxTimeStamp, depth+1)
 		if err != nil {
 			return nil, err
 		}
 		logStreams = append(logStreams, l...)
+		if len(logStreams) >= maxStreams {
+			a.appLog.Warnf("Maximum log streams limit reached (%d), stopping pagination", maxStreams)
+		}
 	}
 	return logStreams, err
 }
 
 // recursive function to list on stdout tge loggroup
 func (a *App) recurseListLogGroup(ctx context.Context, client *cloudwatchlogs.Client, NextToken string) (loggroups []string, err error) {
+	return a.recurseListLogGroupWithDepth(ctx, client, NextToken, 0)
+}
+
+// recurseListLogGroupWithDepth handles pagination with depth limiting
+func (a *App) recurseListLogGroupWithDepth(ctx context.Context, client *cloudwatchlogs.Client, NextToken string, depth int) (loggroups []string, err error) {
+	const maxDepth = 1000 // Prevent infinite recursion
+	const maxLogGroups = 10000 // Prevent memory exhaustion
+	
+	if depth > maxDepth {
+		return loggroups, fmt.Errorf("maximum pagination depth exceeded (%d)", maxDepth)
+	}
 	var params cloudwatchlogs.DescribeLogGroupsInput
 	if len(NextToken) != 0 {
 		params.NextToken = &NextToken
@@ -104,7 +129,7 @@ func (a *App) recurseListLogGroup(ctx context.Context, client *cloudwatchlogs.Cl
 	if err := a.logGroupRateLimit.Wait(ctx); err != nil {
 		return loggroups, fmt.Errorf("rate limit wait error: %w", err)
 	}
-	res, err := client.DescribeLogGroups(context.TODO(), &params)
+	res, err := client.DescribeLogGroups(ctx, &params)
 	if err != nil {
 		return loggroups, err
 	}
@@ -120,10 +145,13 @@ func (a *App) recurseListLogGroup(ctx context.Context, client *cloudwatchlogs.Cl
 		// }
 		// fmt.Println("")
 	}
-	if res.NextToken == nil {
+	if res.NextToken == nil || len(loggroups) >= maxLogGroups {
+		if len(loggroups) >= maxLogGroups {
+			a.appLog.Warnf("Maximum log groups limit reached (%d), stopping pagination", maxLogGroups)
+		}
 		return loggroups, err
 	} else {
-		lg, err := a.recurseListLogGroup(ctx, client, *res.NextToken)
+		lg, err := a.recurseListLogGroupWithDepth(ctx, client, *res.NextToken, depth+1)
 		loggroups = append(loggroups, lg...)
 		return loggroups, err
 	}
@@ -131,7 +159,7 @@ func (a *App) recurseListLogGroup(ctx context.Context, client *cloudwatchlogs.Cl
 
 // function that parses every streams of loggroup groupName
 func (a *App) findLogStream(ctx context.Context, groupName string, logStream string, minTimeStampInMs int64, maxTimeStampInMs int64) ([]types.LogStream, error) {
-	doesGroupNameExists, err := a.findLogGroup(groupName, "")
+	doesGroupNameExists, err := a.findLogGroup(ctx, groupName, "")
 	if err != nil {
 		return nil, err
 	}

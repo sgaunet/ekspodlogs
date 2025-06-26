@@ -109,10 +109,11 @@ func (a *App) getEvents(ctx context.Context, groupName string, streamName string
 		var lineOfLog fluentDockerLog
 		err := json.Unmarshal([]byte(*k.Message), &lineOfLog)
 		if err != nil {
-			a.appLog.Errorln(err.Error(), "Are you sure to parse logs of a container? (done by fluentd)")
-			return fmt.Errorf("failed to unmarshal log message: %w", err)
+			// Log the error but continue processing other events
+			a.appLog.Warnf("Failed to unmarshal log message (skipping): %v. Message: %s", err, *k.Message)
+			continue
 		}
-		timeT := time.Unix(*k.Timestamp/1000, 0)
+		timeT := time.Unix(*k.Timestamp/1000, 0).UTC()
 		// fmt.Printf("%s -- %s -- %s\n", timeT, lineOfLog.Kubernetes.ContainerName, lineOfLog.Log)
 		err = a.queries.AddLog(ctx, a.profileName, groupName, timeT, lineOfLog.Kubernetes.PodName, lineOfLog.Kubernetes.ContainerName, lineOfLog.Kubernetes.NamespaceName, lineOfLog.Log)
 		if err != nil {
@@ -127,8 +128,13 @@ func (a *App) getEvents(ctx context.Context, groupName string, streamName string
 	if res.NextBackwardToken != nil {
 		a.appLog.Debugln("*res.NextBackwardToken=", *res.NextBackwardToken)
 	}
-	if res.NextForwardToken != nil && *res.NextForwardToken != nextToken {
-		return a.getEvents(ctx, groupName, streamName, minTimeStamp, maxTimeStamp, *res.NextForwardToken)
+	// Handle pagination with proper nil checks and infinite loop prevention
+	if res.NextForwardToken != nil {
+		nextForwardToken := *res.NextForwardToken
+		// Prevent infinite recursion if AWS returns the same token
+		if nextForwardToken != "" && nextForwardToken != nextToken {
+			return a.getEvents(ctx, groupName, streamName, minTimeStamp, maxTimeStamp, nextForwardToken)
+		}
 	}
 	return nil
 }
@@ -231,15 +237,16 @@ func (a *App) workerEvents(ctx context.Context, wg *sync.WaitGroup, work <-chan 
 	var currentWorkers atomic.Int32
 	var maxConcurrentWorkers int32 = 10
 
+	// Set a limit on the errgroup to control concurrency properly
+	errGrp.SetLimit(int(maxConcurrentWorkers))
+
 	for w := range work {
-		for currentWorkers.Load() >= maxConcurrentWorkers {
-			time.Sleep(1 * time.Second)
-		}
+		// Capture the work item for the closure
+		workItem := w
 		errGrp.Go(func() error {
 			currentWorkers.Add(1)
-			err := a.getEvents(ctx, w.groupName, w.streamName, w.minTimeStamp, w.maxTimeStamp, "")
-			currentWorkers.Add(-1)
-			return err
+			defer currentWorkers.Add(-1)
+			return a.getEvents(ctx, workItem.groupName, workItem.streamName, workItem.minTimeStamp, workItem.maxTimeStamp, "")
 		})
 	}
 	err := errGrp.Wait()
