@@ -18,6 +18,7 @@ var (
 	groupName  string
 	ssoProfile string
 	podName    string
+	debug      bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -51,11 +52,13 @@ func init() {
 	syncCmd.Flags().StringVarP(&groupName, "group", "g", "", "Group name (not mandatory if there is only one log group : /aws/containerinsights/<Name of your cluster>/application)")
 	syncCmd.Flags().StringVarP(&ssoProfile, "profile", "p", "", "SSO profile (not mandatory)")
 	syncCmd.Flags().StringVarP(&podName, "pod", "n", "", "string that have to match with the pod name")
+	syncCmd.Flags().BoolVarP(&debug, "debug", "d", false, "Enable debug logging")
 	rootCmd.AddCommand(syncCmd)
 
 	purgeCmd.Flags().StringVarP(&groupName, "group", "g", "", "Group name (not mandatory if there is only one log group : /aws/containerinsights/<Name of your cluster>/application)")
 	purgeCmd.Flags().StringVarP(&ssoProfile, "profile", "p", "", "SSO profile (not mandatory)")
 	purgeCmd.Flags().StringVarP(&podName, "pod", "n", "", "string that have to match with the pod name")
+	purgeCmd.Flags().BoolVarP(&debug, "debug", "d", false, "Enable debug logging")
 	rootCmd.AddCommand(purgeCmd)
 
 	reqCmd.Flags().StringVarP(&beginDate, "begin", "b", "", "Begin date")
@@ -63,9 +66,11 @@ func init() {
 	reqCmd.Flags().StringVarP(&groupName, "group", "g", "", "Group name (not mandatory if there is only one log group : /aws/containerinsights/<Name of your cluster>/application)")
 	reqCmd.Flags().StringVarP(&ssoProfile, "profile", "p", "", "SSO profile (not mandatory)")
 	reqCmd.Flags().StringVarP(&podName, "podname", "n", "", "string that have to match with the pod name")
+	reqCmd.Flags().BoolVarP(&debug, "debug", "d", false, "Enable debug logging")
 	rootCmd.AddCommand(reqCmd)
 
 	listGroupsCmd.Flags().StringVarP(&ssoProfile, "profile", "p", "", "SSO profile (not mandatory)")
+	listGroupsCmd.Flags().BoolVarP(&debug, "debug", "d", false, "Enable debug logging")
 	rootCmd.AddCommand(listGroupsCmd)
 
 	rootCmd.AddCommand(versionCmd)

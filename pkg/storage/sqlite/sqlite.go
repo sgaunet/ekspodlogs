@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,10 +31,18 @@ type Storage struct {
 }
 
 func NewStorage(dbFile string) (*Storage, error) {
-	db, err := sql.Open("sqlite3", dbFile)
+	// Configure SQLite connection string for concurrent access
+	dbURL := fmt.Sprintf("file:%s?cache=shared&mode=rwc&_journal_mode=WAL&_synchronous=NORMAL&_timeout=5000", dbFile)
+	db, err := sql.Open("sqlite3", dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open SQLite database: %w", err)
 	}
+	
+	// Configure connection pool for concurrent access
+	db.SetMaxOpenConns(1)  // SQLite works best with a single connection for writes
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(time.Hour)
+	
 	return &Storage{
 		Now:     time.Now,
 		db:      db,
@@ -119,18 +128,40 @@ func (s *Storage) PurgeSpecificLogPodLogs(ctx context.Context, profile string, l
 }
 
 func (s *Storage) AddLog(ctx context.Context, profile string, loggroup string, eventTime time.Time, podName, containerName, nameSpace, log string) error {
-	if err := s.queries.InsertLog(ctx, database.InsertLogParams{
-		EventTime:     eventTime,
-		Profile:       profile,
-		Loggroup:      loggroup,
-		PodName:       podName,
-		ContainerName: containerName,
-		NamespaceName: nameSpace,
-		Log:           log,
-	}); err != nil {
-		return fmt.Errorf("failed to insert log: %w", err)
+	const maxRetries = 3
+	const baseDelay = 10 * time.Millisecond
+	
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		if err := s.queries.InsertLog(ctx, database.InsertLogParams{
+			EventTime:     eventTime,
+			Profile:       profile,
+			Loggroup:      loggroup,
+			PodName:       podName,
+			ContainerName: containerName,
+			NamespaceName: nameSpace,
+			Log:           log,
+		}); err != nil {
+			lastErr = err
+			// Check if it's a database lock error
+			errStr := fmt.Sprintf("%v", err)
+			if i < maxRetries-1 && (strings.Contains(errStr, "database is locked") || 
+				strings.Contains(errStr, "SQLITE_BUSY") ||
+				strings.Contains(errStr, "database lock")) {
+				// Wait with exponential backoff before retrying
+				delay := baseDelay * time.Duration(1<<uint(i))
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(delay):
+					continue
+				}
+			}
+			return fmt.Errorf("failed to insert log: %w", err)
+		}
+		return nil
 	}
-	return nil
+	return fmt.Errorf("failed to insert log after %d retries: %w", maxRetries, lastErr)
 }
 
 func (s *Storage) GetLogsOfPod(ctx context.Context, profile string, logGroup string, podName string, beginDate, endDate time.Time) ([]database.Log, error) {

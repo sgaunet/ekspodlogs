@@ -126,6 +126,8 @@ func (a *App) parseAllStreamsOfGroupParallel(ctx context.Context, groupName stri
 	// Counter for active pages being processed
 	var activePagesCount int
 	var activePagesMutex sync.Mutex
+	var closeOnce sync.Once
+	var channelClosed bool
 	
 	// Use errgroup for proper error handling
 	g, ctx := errgroup.WithContext(ctx)
@@ -157,6 +159,24 @@ func (a *App) parseAllStreamsOfGroupParallel(ctx context.Context, groupName stri
 		defer activePagesMutex.Unlock()
 		activePagesCount--
 		return activePagesCount
+	}
+	
+	// Function to safely send to channel
+	safeSend := func(page streamPage) bool {
+		activePagesMutex.Lock()
+		defer activePagesMutex.Unlock()
+		if channelClosed {
+			return false
+		}
+		select {
+		case pagesChan <- page:
+			return true
+		case <-ctx.Done():
+			return false
+		default:
+			// Channel is full
+			return false
+		}
 	}
 	
 	// Worker function to process pages
@@ -236,15 +256,12 @@ func (a *App) parseAllStreamsOfGroupParallel(ctx context.Context, groupName stri
 			
 			// Check if we should continue with more pages
 			if res.NextToken != nil && !shouldStopLocal && !checkShouldStop() && currentStreamCount < maxStreams {
-				select {
-				case pagesChan <- streamPage{nextToken: *res.NextToken, depth: page.depth + 1}:
-					// Successfully queued next page
-				case <-ctx.Done():
-					decActivePages()
-					return ctx.Err()
-				default:
-					// Channel is full, this shouldn't happen with our buffer size
-					a.appLog.Warnf("Pages channel is full, dropping page")
+				if !safeSend(streamPage{nextToken: *res.NextToken, depth: page.depth + 1}) {
+					if ctx.Err() != nil {
+						decActivePages()
+						return ctx.Err()
+					}
+					a.appLog.Warnf("Could not queue next page, channel may be closed or full")
 				}
 			}
 			
@@ -253,7 +270,12 @@ func (a *App) parseAllStreamsOfGroupParallel(ctx context.Context, groupName stri
 			
 			// If this was the last active page and we have no more work, close the channel
 			if activeCount == 0 {
-				close(pagesChan)
+				closeOnce.Do(func() {
+					activePagesMutex.Lock()
+					channelClosed = true
+					activePagesMutex.Unlock()
+					close(pagesChan)
+				})
 				return nil
 			}
 		}
