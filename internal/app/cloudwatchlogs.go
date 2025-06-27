@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 	"github.com/dromara/carbon/v2"
+	"golang.org/x/sync/errgroup"
 )
 
 // Recursive function that will return true if the groupName parameter has been found or not
@@ -35,79 +37,6 @@ func (a *App) findLogGroup(ctx context.Context, groupName string, NextToken stri
 	return a.findLogGroup(ctx, groupName, *res.NextToken)
 }
 
-// parseAllStreamsOfGroup parses every events of every streams of a group
-// It's a recursive function with pagination bounds
-func (a *App) parseAllStreamsOfGroup(ctx context.Context, groupName string, logStream string, nextToken string, minTimeStamp int64, maxTimeStamp int64) ([]types.LogStream, error) {
-	return a.parseAllStreamsOfGroupWithDepth(ctx, groupName, logStream, nextToken, minTimeStamp, maxTimeStamp, 0)
-}
-
-// parseAllStreamsOfGroupWithDepth handles pagination with depth limiting
-func (a *App) parseAllStreamsOfGroupWithDepth(ctx context.Context, groupName string, logStream string, nextToken string, minTimeStamp int64, maxTimeStamp int64, depth int) ([]types.LogStream, error) {
-	const maxDepth = 1000 // Prevent infinite recursion
-	const maxStreams = 10000 // Prevent memory exhaustion
-	
-	if depth > maxDepth {
-		return nil, fmt.Errorf("maximum pagination depth exceeded (%d)", maxDepth)
-	}
-	var paramsLogStream cloudwatchlogs.DescribeLogStreamsInput
-	var stopToParseLogStream bool
-	var logStreams []types.LogStream
-	// Search logstreams of groupName
-	// Ordered by last event time
-	// descending
-	paramsLogStream.LogGroupName = &groupName
-	paramsLogStream.OrderBy = "LastEventTime"
-	descending := true
-	paramsLogStream.Descending = &descending
-
-	if len(nextToken) != 0 {
-		paramsLogStream.NextToken = &nextToken
-	}
-	// https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs#Client.DescribeLogStreams
-	// now := time.Now()
-	if err := a.logGroupRateLimit.Wait(ctx); err != nil {
-		return nil, fmt.Errorf("rate limit wait error: %w", err)
-	}
-	res2, err := a.clientCloudwatchlogs.DescribeLogStreams(ctx, &paramsLogStream)
-	if err != nil {
-		return nil, err
-	}
-	// Loop over streams
-	for _, j := range res2.LogStreams {
-		a.tui.IncNbLogStreams()
-		// fmt.Println(idx, *j.LogStreamName)
-		if strings.Contains(*j.LogStreamName, logStream) || len(logStream) == 0 {
-			a.tui.IncNbLogStreamsFound()
-			tm := time.Unix(*j.LastEventTimestamp/1000, 0) // aws timestamp are in ms
-			// convert tm to date
-			lastEvent := carbon.CreateFromTimestamp(*j.LastEventTimestamp / 1000)
-			a.appLog.Debugf("Stream Name: %s\n", *j.LogStreamName)
-			a.appLog.Debugf("LasteventTimeStamp: %d  (%s)\n", *j.LastEventTimestamp, lastEvent.ToDateTimeString())
-			a.appLog.Debugf("Parse stream : %s (Last event %v)\n", *j.LogStreamName, tm)
-			logStreams = append(logStreams, j)
-		}
-		// No need to parse old logstream older than minTimeStamp
-		if *j.LastEventTimestamp < minTimeStamp {
-			stopToParseLogStream = true
-			a.appLog.Debugf("%v < %v\n", *j.LastEventTimestamp, minTimeStamp)
-			a.appLog.Debugf("%v < %v\n", time.Unix(*j.LastEventTimestamp/1000, 0), time.Unix(minTimeStamp/1000, 0))
-			a.appLog.Debugln("stop to parse, *j.LastEventTimestamp < minTimeStamp")
-			break
-		}
-	}
-
-	if res2.NextToken != nil && !stopToParseLogStream && len(logStreams) < maxStreams {
-		l, err := a.parseAllStreamsOfGroupWithDepth(ctx, groupName, logStream, *res2.NextToken, minTimeStamp, maxTimeStamp, depth+1)
-		if err != nil {
-			return nil, err
-		}
-		logStreams = append(logStreams, l...)
-		if len(logStreams) >= maxStreams {
-			a.appLog.Warnf("Maximum log streams limit reached (%d), stopping pagination", maxStreams)
-		}
-	}
-	return logStreams, err
-}
 
 // recursive function to list on stdout tge loggroup
 func (a *App) recurseListLogGroup(ctx context.Context, client *cloudwatchlogs.Client, NextToken string) (loggroups []string, err error) {
@@ -169,6 +98,180 @@ func (a *App) findLogStream(ctx context.Context, groupName string, logStream str
 		return nil, err
 	}
 
-	logstreams, err := a.parseAllStreamsOfGroup(ctx, groupName, logStream, "", minTimeStampInMs, maxTimeStampInMs)
+	logstreams, err := a.parseAllStreamsOfGroupParallel(ctx, groupName, logStream, minTimeStampInMs, maxTimeStampInMs)
 	return logstreams, err
+}
+
+// streamPage represents a page of log streams to fetch
+type streamPage struct {
+	nextToken string
+	depth     int
+}
+
+
+// parseAllStreamsOfGroupParallel fetches log streams in parallel while respecting rate limits
+func (a *App) parseAllStreamsOfGroupParallel(ctx context.Context, groupName string, logStream string, minTimeStamp int64, maxTimeStamp int64) ([]types.LogStream, error) {
+	const maxDepth = 1000
+	const maxStreams = 10000
+	const maxConcurrentPages = 3 // Limit concurrent API calls to respect rate limits
+
+	var allStreams []types.LogStream
+	var streamsMutex sync.Mutex
+	var shouldStopGlobal bool
+	var stopMutex sync.Mutex
+	
+	// Channel to manage pages to process
+	pagesChan := make(chan streamPage, 10)
+	
+	// Counter for active pages being processed
+	var activePagesCount int
+	var activePagesMutex sync.Mutex
+	
+	// Use errgroup for proper error handling
+	g, ctx := errgroup.WithContext(ctx)
+	
+	// Function to check if we should stop
+	checkShouldStop := func() bool {
+		stopMutex.Lock()
+		defer stopMutex.Unlock()
+		return shouldStopGlobal
+	}
+	
+	// Function to set global stop flag
+	setStop := func() {
+		stopMutex.Lock()
+		defer stopMutex.Unlock()
+		shouldStopGlobal = true
+	}
+	
+	// Function to increment active pages
+	incActivePages := func() {
+		activePagesMutex.Lock()
+		defer activePagesMutex.Unlock()
+		activePagesCount++
+	}
+	
+	// Function to decrement active pages and return count
+	decActivePages := func() int {
+		activePagesMutex.Lock()
+		defer activePagesMutex.Unlock()
+		activePagesCount--
+		return activePagesCount
+	}
+	
+	// Worker function to process pages
+	processPage := func() error {
+		for page := range pagesChan {
+			if page.depth > maxDepth {
+				return fmt.Errorf("maximum pagination depth exceeded (%d)", maxDepth)
+			}
+			
+			incActivePages()
+			
+			// Rate limit the API call
+			if err := a.logGroupRateLimit.Wait(ctx); err != nil {
+				decActivePages()
+				return fmt.Errorf("rate limit wait error: %w", err)
+			}
+			
+			// Prepare the API request
+			var paramsLogStream cloudwatchlogs.DescribeLogStreamsInput
+			paramsLogStream.LogGroupName = &groupName
+			paramsLogStream.OrderBy = "LastEventTime"
+			descending := true
+			paramsLogStream.Descending = &descending
+			
+			if len(page.nextToken) != 0 {
+				paramsLogStream.NextToken = &page.nextToken
+			}
+			
+			// Make the API call
+			res, err := a.clientCloudwatchlogs.DescribeLogStreams(ctx, &paramsLogStream)
+			if err != nil {
+				decActivePages()
+				return fmt.Errorf("failed to describe log streams: %w", err)
+			}
+			
+			// Process the streams from this page
+			var pageStreams []types.LogStream
+			var shouldStopLocal bool
+			
+			for _, j := range res.LogStreams {
+				a.tui.IncNbLogStreams()
+				
+				// Check if stream matches the filter
+				if strings.Contains(*j.LogStreamName, logStream) || len(logStream) == 0 {
+					a.tui.IncNbLogStreamsFound()
+					tm := time.Unix(*j.LastEventTimestamp/1000, 0)
+					lastEvent := carbon.CreateFromTimestamp(*j.LastEventTimestamp / 1000)
+					a.appLog.Debugf("Stream Name: %s\n", *j.LogStreamName)
+					a.appLog.Debugf("LasteventTimeStamp: %d  (%s)\n", *j.LastEventTimestamp, lastEvent.ToDateTimeString())
+					a.appLog.Debugf("Parse stream : %s (Last event %v)\n", *j.LogStreamName, tm)
+					pageStreams = append(pageStreams, j)
+				}
+				
+				// Check if we should stop processing older streams
+				if *j.LastEventTimestamp < minTimeStamp {
+					shouldStopLocal = true
+					a.appLog.Debugf("%v < %v\n", *j.LastEventTimestamp, minTimeStamp)
+					a.appLog.Debugf("%v < %v\n", time.Unix(*j.LastEventTimestamp/1000, 0), time.Unix(minTimeStamp/1000, 0))
+					a.appLog.Debugln("stop to parse, *j.LastEventTimestamp < minTimeStamp")
+					break
+				}
+			}
+			
+			// Add streams to the global collection
+			streamsMutex.Lock()
+			allStreams = append(allStreams, pageStreams...)
+			currentStreamCount := len(allStreams)
+			streamsMutex.Unlock()
+			
+			// Set global stop flag if local conditions are met
+			if shouldStopLocal || currentStreamCount >= maxStreams {
+				if currentStreamCount >= maxStreams {
+					a.appLog.Warnf("Maximum log streams limit reached (%d), stopping pagination", maxStreams)
+				}
+				setStop()
+			}
+			
+			// Check if we should continue with more pages
+			if res.NextToken != nil && !shouldStopLocal && !checkShouldStop() && currentStreamCount < maxStreams {
+				select {
+				case pagesChan <- streamPage{nextToken: *res.NextToken, depth: page.depth + 1}:
+					// Successfully queued next page
+				case <-ctx.Done():
+					decActivePages()
+					return ctx.Err()
+				default:
+					// Channel is full, this shouldn't happen with our buffer size
+					a.appLog.Warnf("Pages channel is full, dropping page")
+				}
+			}
+			
+			// Decrement active pages count
+			activeCount := decActivePages()
+			
+			// If this was the last active page and we have no more work, close the channel
+			if activeCount == 0 {
+				close(pagesChan)
+				return nil
+			}
+		}
+		return nil
+	}
+	
+	// Start with the first page
+	pagesChan <- streamPage{nextToken: "", depth: 0}
+	
+	// Start multiple workers to process pages concurrently
+	for range maxConcurrentPages {
+		g.Go(processPage)
+	}
+	
+	// Wait for all workers to complete
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	
+	return allStreams, nil
 }
