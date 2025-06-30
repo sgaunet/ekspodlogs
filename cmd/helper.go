@@ -85,6 +85,28 @@ func NewLogger(debugLevel string) *logrus.Logger {
 	return appLog
 }
 
+// NewLoggerWithDebug creates a new logger with debug flag
+// If debug is true, sets log level to debug and outputs to stderr
+// If debug is false, sets log level to info and discards output
+func NewLoggerWithDebug(enableDebug bool) *logrus.Logger {
+	appLog := logrus.New()
+	appLog.SetFormatter(&logrus.TextFormatter{
+		DisableColors:    false,
+		FullTimestamp:    false,
+		DisableTimestamp: true,
+	})
+
+	if enableDebug {
+		appLog.SetLevel(logrus.DebugLevel)
+		appLog.SetOutput(os.Stderr)
+	} else {
+		appLog.SetLevel(logrus.InfoLevel)
+		appLog.SetOutput(io.Discard)
+	}
+	
+	return appLog
+}
+
 // DefaultDBPath returns the default path of the database
 func DefaultDBPath() (string, error) {
 	homeDir := os.Getenv("HOME")

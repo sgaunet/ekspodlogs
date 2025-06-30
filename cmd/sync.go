@@ -59,6 +59,11 @@ var syncCmd = &cobra.Command{
 
 		tui := views.NewTerminalView()
 		app := app.New(cfg, ssoProfile, s, tui)
+		
+		// Configure logger based on debug flag
+		logger := NewLoggerWithDebug(debug)
+		app.SetLogger(logger)
+		
 		if err = app.PrintID(); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)

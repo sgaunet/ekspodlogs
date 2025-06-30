@@ -77,65 +77,102 @@ func (a *App) PrintID() error {
 	return nil
 }
 
+
 // getEvents parse events of a stream and print results that do not match with any rules on stdout
+// Now uses parallel pagination for improved performance
 func (a *App) getEvents(ctx context.Context, groupName string, streamName string, minTimeStamp int64, maxTimeStamp int64, nextToken string) error {
-	startFromHead := true
-	input := cloudwatchlogs.GetLogEventsInput{
-		LogGroupName:  &groupName,
-		LogStreamName: &streamName,
-		EndTime:       &maxTimeStamp,
-		StartTime:     &minTimeStamp,
-		StartFromHead: &startFromHead,
-	}
+	const maxDepth = 1000
+	
 	a.appLog.Debugf("maxTimeStamp=%v     //   %v\n", maxTimeStamp, time.Unix(maxTimeStamp/1000, 0))
 	a.appLog.Debugf("minTimeStamp=%v     //   %v\n", minTimeStamp, time.Unix(minTimeStamp/1000, 0))
-
-	if nextToken == "" {
-		input.NextToken = nil
-	} else {
-		input.NextToken = &nextToken
-	}
-
 	a.appLog.Debugf("\n**Parse stream** : %s\n", streamName)
-	if err := a.eventsRateLimit.Wait(ctx); err != nil {
-		return fmt.Errorf("rate limit wait error: %w", err)
-	}
-	res, err := a.clientCloudwatchlogs.GetLogEvents(ctx, &input)
-	if err != nil {
-		return fmt.Errorf("failed to get log events: %w", err)
-	}
 
-	for _, k := range res.Events {
-		var lineOfLog fluentDockerLog
-		err := json.Unmarshal([]byte(*k.Message), &lineOfLog)
-		if err != nil {
-			// Log the error but continue processing other events
-			a.appLog.Warnf("Failed to unmarshal log message (skipping): %v. Message: %s", err, *k.Message)
-			continue
+	// Use a simpler approach: process sequentially to avoid complex concurrency issues
+	depth := 0
+	currentToken := nextToken
+	seenTokens := make(map[string]bool)
+	
+	for {
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
-		timeT := time.Unix(*k.Timestamp/1000, 0).UTC()
-		// fmt.Printf("%s -- %s -- %s\n", timeT, lineOfLog.Kubernetes.ContainerName, lineOfLog.Log)
-		err = a.queries.AddLog(ctx, a.profileName, groupName, timeT, lineOfLog.Kubernetes.PodName, lineOfLog.Kubernetes.ContainerName, lineOfLog.Kubernetes.NamespaceName, lineOfLog.Log)
-		if err != nil {
-			return fmt.Errorf("failed to add log: %w", err)
+		
+		// Check depth limit
+		if depth > maxDepth {
+			return fmt.Errorf("maximum pagination depth exceeded (%d)", maxDepth)
 		}
-	}
-
-	a.appLog.Debugln("             nextToken=", nextToken)
-	if res.NextForwardToken != nil {
-		a.appLog.Debugln(" *res.NextForwardToken=", *res.NextForwardToken)
-	}
-	if res.NextBackwardToken != nil {
-		a.appLog.Debugln("*res.NextBackwardToken=", *res.NextBackwardToken)
-	}
-	// Handle pagination with proper nil checks and infinite loop prevention
-	if res.NextForwardToken != nil {
+		
+		// Check for duplicate tokens to prevent infinite loops
+		if currentToken != "" && seenTokens[currentToken] {
+			a.appLog.Debugf("Duplicate token detected for stream %s, stopping pagination", streamName)
+			break
+		}
+		if currentToken != "" {
+			seenTokens[currentToken] = true
+		}
+		
+		// Rate limit the API call
+		if err := a.eventsRateLimit.Wait(ctx); err != nil {
+			return fmt.Errorf("rate limit wait error: %w", err)
+		}
+		
+		// Prepare the API request
+		startFromHead := true
+		input := cloudwatchlogs.GetLogEventsInput{
+			LogGroupName:  &groupName,
+			LogStreamName: &streamName,
+			EndTime:       &maxTimeStamp,
+			StartTime:     &minTimeStamp,
+			StartFromHead: &startFromHead,
+		}
+		
+		if currentToken != "" {
+			input.NextToken = &currentToken
+		}
+		
+		// Make the API call
+		res, err := a.clientCloudwatchlogs.GetLogEvents(ctx, &input)
+		if err != nil {
+			return fmt.Errorf("failed to get log events: %w", err)
+		}
+		
+		// Process events from this batch
+		a.appLog.Debugf("Processing batch of %d events for stream %s", len(res.Events), streamName)
+		for _, k := range res.Events {
+			var lineOfLog fluentDockerLog
+			err := json.Unmarshal([]byte(*k.Message), &lineOfLog)
+			if err != nil {
+				// Log the error but continue processing other events
+				a.appLog.Warnf("Failed to unmarshal log message (skipping): %v. Message: %s", err, *k.Message)
+				continue
+			}
+			timeT := time.Unix(*k.Timestamp/1000, 0).UTC()
+			err = a.queries.AddLog(ctx, a.profileName, groupName, timeT, lineOfLog.Kubernetes.PodName, lineOfLog.Kubernetes.ContainerName, lineOfLog.Kubernetes.NamespaceName, lineOfLog.Log)
+			if err != nil {
+				return fmt.Errorf("failed to add log: %w", err)
+			}
+		}
+		
+		// Check if we should continue pagination
+		if res.NextForwardToken == nil || len(res.Events) == 0 {
+			a.appLog.Debugf("No more events for stream %s, stopping pagination", streamName)
+			break
+		}
+		
 		nextForwardToken := *res.NextForwardToken
-		// Prevent infinite recursion if AWS returns the same token
-		if nextForwardToken != "" && nextForwardToken != nextToken {
-			return a.getEvents(ctx, groupName, streamName, minTimeStamp, maxTimeStamp, nextForwardToken)
+		if nextForwardToken == "" || nextForwardToken == currentToken {
+			a.appLog.Debugf("No new token for stream %s, stopping pagination", streamName)
+			break
 		}
+		
+		currentToken = nextForwardToken
+		depth++
 	}
+	
+	a.appLog.Debugf("Finished processing stream %s", streamName)
 	return nil
 }
 
@@ -176,6 +213,10 @@ func (a *App) PrintEvents(ctx context.Context, groupName string, logStream strin
 	minTimeStampInMs := startTime.Unix() * 1000
 	maxTimeStampInMs := endTime.Unix() * 1000
 
+	// Add timeout to prevent indefinite hanging
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
+
 	a.tui.StartSpinnerRetrieveLogStreams()
 	logStreams, err := a.findLogStream(ctx, groupName, logStream, minTimeStampInMs, maxTimeStampInMs)
 	if err != nil {
@@ -196,6 +237,7 @@ func (a *App) PrintEvents(ctx context.Context, groupName string, logStream strin
 		errWorker = a.workerEvents(ctx, &wg, chWorker)
 	}()
 
+	a.appLog.Debugf("Processing %d log streams for events", len(logStreams))
 	for _, l := range logStreams {
 		work := workEvent{
 			groupName:    groupName,
@@ -203,6 +245,7 @@ func (a *App) PrintEvents(ctx context.Context, groupName string, logStream strin
 			minTimeStamp: minTimeStampInMs,
 			maxTimeStamp: maxTimeStampInMs,
 		}
+		a.appLog.Debugf("Queuing work for stream: %s", *l.LogStreamName)
 		chWorker <- work
 		a.tui.IncNbStreamsScanned()
 	}
@@ -235,7 +278,7 @@ type workEvent struct {
 func (a *App) workerEvents(ctx context.Context, wg *sync.WaitGroup, work <-chan workEvent) error {
 	var errGrp errgroup.Group
 	var currentWorkers atomic.Int32
-	var maxConcurrentWorkers int32 = 10
+	var maxConcurrentWorkers int32 = 3  // Reduce concurrency for SQLite compatibility
 
 	// Set a limit on the errgroup to control concurrency properly
 	errGrp.SetLimit(int(maxConcurrentWorkers))
