@@ -81,7 +81,6 @@ func (a *App) PrintID() error {
 // getEvents parse events of a stream and print results that do not match with any rules on stdout
 // Now uses parallel pagination for improved performance
 func (a *App) getEvents(ctx context.Context, groupName string, streamName string, minTimeStamp int64, maxTimeStamp int64, nextToken string) error {
-	const maxDepth = 1000
 	
 	a.appLog.Debugf("maxTimeStamp=%v     //   %v\n", maxTimeStamp, time.Unix(maxTimeStamp/1000, 0))
 	a.appLog.Debugf("minTimeStamp=%v     //   %v\n", minTimeStamp, time.Unix(minTimeStamp/1000, 0))
@@ -100,10 +99,7 @@ func (a *App) getEvents(ctx context.Context, groupName string, streamName string
 		default:
 		}
 		
-		// Check depth limit
-		if depth > maxDepth {
-			return fmt.Errorf("maximum pagination depth exceeded (%d)", maxDepth)
-		}
+		// Check depth limit removed - allow unlimited pagination
 		
 		// Check for duplicate tokens to prevent infinite loops
 		if currentToken != "" && seenTokens[currentToken] {

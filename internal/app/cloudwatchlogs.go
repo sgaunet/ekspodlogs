@@ -45,12 +45,6 @@ func (a *App) recurseListLogGroup(ctx context.Context, client *cloudwatchlogs.Cl
 
 // recurseListLogGroupWithDepth handles pagination with depth limiting
 func (a *App) recurseListLogGroupWithDepth(ctx context.Context, client *cloudwatchlogs.Client, NextToken string, depth int) (loggroups []string, err error) {
-	const maxDepth = 1000 // Prevent infinite recursion
-	const maxLogGroups = 10000 // Prevent memory exhaustion
-	
-	if depth > maxDepth {
-		return loggroups, fmt.Errorf("maximum pagination depth exceeded (%d)", maxDepth)
-	}
 	var params cloudwatchlogs.DescribeLogGroupsInput
 	if len(NextToken) != 0 {
 		params.NextToken = &NextToken
@@ -74,10 +68,7 @@ func (a *App) recurseListLogGroupWithDepth(ctx context.Context, client *cloudwat
 		// }
 		// fmt.Println("")
 	}
-	if res.NextToken == nil || len(loggroups) >= maxLogGroups {
-		if len(loggroups) >= maxLogGroups {
-			a.appLog.Warnf("Maximum log groups limit reached (%d), stopping pagination", maxLogGroups)
-		}
+	if res.NextToken == nil {
 		return loggroups, err
 	} else {
 		lg, err := a.recurseListLogGroupWithDepth(ctx, client, *res.NextToken, depth+1)
@@ -111,8 +102,6 @@ type streamPage struct {
 
 // parseAllStreamsOfGroupParallel fetches log streams in parallel while respecting rate limits
 func (a *App) parseAllStreamsOfGroupParallel(ctx context.Context, groupName string, logStream string, minTimeStamp int64, maxTimeStamp int64) ([]types.LogStream, error) {
-	const maxDepth = 1000
-	const maxStreams = 10000
 	const maxConcurrentPages = 3 // Limit concurrent API calls to respect rate limits
 
 	var allStreams []types.LogStream
@@ -123,11 +112,10 @@ func (a *App) parseAllStreamsOfGroupParallel(ctx context.Context, groupName stri
 	// Channel to manage pages to process
 	pagesChan := make(chan streamPage, 10)
 	
-	// Counter for active pages being processed
-	var activePagesCount int
-	var activePagesMutex sync.Mutex
+	// Counter for pending work items
+	var pendingWork int32
+	var workMutex sync.Mutex
 	var closeOnce sync.Once
-	var channelClosed bool
 	
 	// Use errgroup for proper error handling
 	g, ctx := errgroup.WithContext(ctx)
@@ -146,35 +134,28 @@ func (a *App) parseAllStreamsOfGroupParallel(ctx context.Context, groupName stri
 		shouldStopGlobal = true
 	}
 	
-	// Function to increment active pages
-	incActivePages := func() {
-		activePagesMutex.Lock()
-		defer activePagesMutex.Unlock()
-		activePagesCount++
+	// Function to increment pending work
+	incPendingWork := func() {
+		workMutex.Lock()
+		defer workMutex.Unlock()
+		pendingWork++
 	}
 	
-	// Function to decrement active pages and return count
-	decActivePages := func() int {
-		activePagesMutex.Lock()
-		defer activePagesMutex.Unlock()
-		activePagesCount--
-		return activePagesCount
+	// Function to decrement pending work and return count
+	decPendingWork := func() int32 {
+		workMutex.Lock()
+		defer workMutex.Unlock()
+		pendingWork--
+		return pendingWork
 	}
 	
 	// Function to safely send to channel
 	safeSend := func(page streamPage) bool {
-		activePagesMutex.Lock()
-		defer activePagesMutex.Unlock()
-		if channelClosed {
-			return false
-		}
 		select {
 		case pagesChan <- page:
+			incPendingWork()
 			return true
 		case <-ctx.Done():
-			return false
-		default:
-			// Channel is full
 			return false
 		}
 	}
@@ -182,15 +163,9 @@ func (a *App) parseAllStreamsOfGroupParallel(ctx context.Context, groupName stri
 	// Worker function to process pages
 	processPage := func() error {
 		for page := range pagesChan {
-			if page.depth > maxDepth {
-				return fmt.Errorf("maximum pagination depth exceeded (%d)", maxDepth)
-			}
-			
-			incActivePages()
-			
 			// Rate limit the API call
 			if err := a.logGroupRateLimit.Wait(ctx); err != nil {
-				decActivePages()
+				decPendingWork()
 				return fmt.Errorf("rate limit wait error: %w", err)
 			}
 			
@@ -200,6 +175,9 @@ func (a *App) parseAllStreamsOfGroupParallel(ctx context.Context, groupName stri
 			paramsLogStream.OrderBy = "LastEventTime"
 			descending := true
 			paramsLogStream.Descending = &descending
+			// Set limit to maximum (50) to get as many streams as possible per API call
+			limit := int32(50)
+			paramsLogStream.Limit = &limit
 			
 			if len(page.nextToken) != 0 {
 				paramsLogStream.NextToken = &page.nextToken
@@ -208,7 +186,7 @@ func (a *App) parseAllStreamsOfGroupParallel(ctx context.Context, groupName stri
 			// Make the API call
 			res, err := a.clientCloudwatchlogs.DescribeLogStreams(ctx, &paramsLogStream)
 			if err != nil {
-				decActivePages()
+				decPendingWork()
 				return fmt.Errorf("failed to describe log streams: %w", err)
 			}
 			
@@ -243,37 +221,30 @@ func (a *App) parseAllStreamsOfGroupParallel(ctx context.Context, groupName stri
 			// Add streams to the global collection
 			streamsMutex.Lock()
 			allStreams = append(allStreams, pageStreams...)
-			currentStreamCount := len(allStreams)
 			streamsMutex.Unlock()
 			
 			// Set global stop flag if local conditions are met
-			if shouldStopLocal || currentStreamCount >= maxStreams {
-				if currentStreamCount >= maxStreams {
-					a.appLog.Warnf("Maximum log streams limit reached (%d), stopping pagination", maxStreams)
-				}
+			if shouldStopLocal {
 				setStop()
 			}
 			
 			// Check if we should continue with more pages
-			if res.NextToken != nil && !shouldStopLocal && !checkShouldStop() && currentStreamCount < maxStreams {
+			if res.NextToken != nil && !shouldStopLocal && !checkShouldStop() {
 				if !safeSend(streamPage{nextToken: *res.NextToken, depth: page.depth + 1}) {
+					// safeSend only returns false if context is cancelled
 					if ctx.Err() != nil {
-						decActivePages()
+						decPendingWork()
 						return ctx.Err()
 					}
-					a.appLog.Warnf("Could not queue next page, channel may be closed or full")
 				}
 			}
 			
-			// Decrement active pages count
-			activeCount := decActivePages()
+			// Decrement pending work count
+			remaining := decPendingWork()
 			
-			// If this was the last active page and we have no more work, close the channel
-			if activeCount == 0 {
+			// If this was the last pending work item, close the channel
+			if remaining == 0 {
 				closeOnce.Do(func() {
-					activePagesMutex.Lock()
-					channelClosed = true
-					activePagesMutex.Unlock()
 					close(pagesChan)
 				})
 				return nil
@@ -282,12 +253,14 @@ func (a *App) parseAllStreamsOfGroupParallel(ctx context.Context, groupName stri
 		return nil
 	}
 	
-	// Start with the first page
-	pagesChan <- streamPage{nextToken: "", depth: 0}
-	
-	// Start multiple workers to process pages concurrently
+	// Start workers
 	for range maxConcurrentPages {
 		g.Go(processPage)
+	}
+	
+	// Start with the first page
+	if !safeSend(streamPage{nextToken: "", depth: 0}) {
+		return nil, ctx.Err()
 	}
 	
 	// Wait for all workers to complete
