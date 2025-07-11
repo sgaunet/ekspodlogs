@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"sync"
-	"sync/atomic"
+	"strings"
 	"time"
 
-	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -78,99 +76,6 @@ func (a *App) PrintID() error {
 }
 
 
-// getEvents parse events of a stream and print results that do not match with any rules on stdout
-// Now uses parallel pagination for improved performance
-func (a *App) getEvents(ctx context.Context, groupName string, streamName string, minTimeStamp int64, maxTimeStamp int64, nextToken string) error {
-	
-	a.appLog.Debugf("maxTimeStamp=%v     //   %v\n", maxTimeStamp, time.Unix(maxTimeStamp/1000, 0))
-	a.appLog.Debugf("minTimeStamp=%v     //   %v\n", minTimeStamp, time.Unix(minTimeStamp/1000, 0))
-	a.appLog.Debugf("\n**Parse stream** : %s\n", streamName)
-
-	// Use a simpler approach: process sequentially to avoid complex concurrency issues
-	depth := 0
-	currentToken := nextToken
-	seenTokens := make(map[string]bool)
-	
-	for {
-		// Check context cancellation
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		
-		// Check depth limit removed - allow unlimited pagination
-		
-		// Check for duplicate tokens to prevent infinite loops
-		if currentToken != "" && seenTokens[currentToken] {
-			a.appLog.Debugf("Duplicate token detected for stream %s, stopping pagination", streamName)
-			break
-		}
-		if currentToken != "" {
-			seenTokens[currentToken] = true
-		}
-		
-		// Rate limit the API call
-		if err := a.eventsRateLimit.Wait(ctx); err != nil {
-			return fmt.Errorf("rate limit wait error: %w", err)
-		}
-		
-		// Prepare the API request
-		startFromHead := true
-		input := cloudwatchlogs.GetLogEventsInput{
-			LogGroupName:  &groupName,
-			LogStreamName: &streamName,
-			EndTime:       &maxTimeStamp,
-			StartTime:     &minTimeStamp,
-			StartFromHead: &startFromHead,
-		}
-		
-		if currentToken != "" {
-			input.NextToken = &currentToken
-		}
-		
-		// Make the API call
-		res, err := a.clientCloudwatchlogs.GetLogEvents(ctx, &input)
-		if err != nil {
-			return fmt.Errorf("failed to get log events: %w", err)
-		}
-		
-		// Process events from this batch
-		a.appLog.Debugf("Processing batch of %d events for stream %s", len(res.Events), streamName)
-		for _, k := range res.Events {
-			var lineOfLog fluentDockerLog
-			err := json.Unmarshal([]byte(*k.Message), &lineOfLog)
-			if err != nil {
-				// Log the error but continue processing other events
-				a.appLog.Warnf("Failed to unmarshal log message (skipping): %v. Message: %s", err, *k.Message)
-				continue
-			}
-			timeT := time.Unix(*k.Timestamp/1000, 0).UTC()
-			err = a.queries.AddLog(ctx, a.profileName, groupName, timeT, lineOfLog.Kubernetes.PodName, lineOfLog.Kubernetes.ContainerName, lineOfLog.Kubernetes.NamespaceName, lineOfLog.Log)
-			if err != nil {
-				return fmt.Errorf("failed to add log: %w", err)
-			}
-		}
-		
-		// Check if we should continue pagination
-		if res.NextForwardToken == nil || len(res.Events) == 0 {
-			a.appLog.Debugf("No more events for stream %s, stopping pagination", streamName)
-			break
-		}
-		
-		nextForwardToken := *res.NextForwardToken
-		if nextForwardToken == "" || nextForwardToken == currentToken {
-			a.appLog.Debugf("No new token for stream %s, stopping pagination", streamName)
-			break
-		}
-		
-		currentToken = nextForwardToken
-		depth++
-	}
-	
-	a.appLog.Debugf("Finished processing stream %s", streamName)
-	return nil
-}
 
 // ListLogGroup is a recursive function to list all log groups
 func (a *App) ListLogGroups(ctx context.Context, NextToken string) error {
@@ -203,9 +108,8 @@ func (a *App) FindLogGroupAuto(ctx context.Context) (string, error) {
 	return "", err
 }
 
-// PrintEvents prints events of a log group
+// PrintEvents prints events of a log group using FilterLogEvents for improved performance
 func (a *App) PrintEvents(ctx context.Context, groupName string, logStream string, startTime time.Time, endTime time.Time) error {
-	var errWorker error
 	minTimeStampInMs := startTime.Unix() * 1000
 	maxTimeStampInMs := endTime.Unix() * 1000
 
@@ -214,42 +118,107 @@ func (a *App) PrintEvents(ctx context.Context, groupName string, logStream strin
 	defer cancel()
 
 	a.tui.StartSpinnerRetrieveLogStreams()
-	logStreams, err := a.findLogStream(ctx, groupName, logStream, minTimeStampInMs, maxTimeStampInMs)
+	
+	// Use FilterLogEvents instead of DescribeLogStreams + GetLogEvents for better performance
+	err := a.processEventsWithFilter(ctx, groupName, logStream, minTimeStampInMs, maxTimeStampInMs)
+	
+	a.tui.StopSpinnerRetrieveLogStreams()
 	if err != nil {
-		// err spinner
 		return err
 	}
-	a.tui.StopSpinnerRetrieveLogStreams()
-	err = a.tui.StartSpinnerScanLogStreams()
-	if err != nil {
-		return fmt.Errorf("failed to start spinner: %w", err)
+	return nil
+}
+
+// processEventsWithFilter uses FilterLogEvents API to retrieve and process log events efficiently
+func (a *App) processEventsWithFilter(ctx context.Context, groupName string, logStreamFilter string, minTimeStamp int64, maxTimeStamp int64) error {
+	// Set up FilterLogEvents input parameters
+	input := &cloudwatchlogs.FilterLogEventsInput{
+		LogGroupName: &groupName,
+		StartTime:    &minTimeStamp,
+		EndTime:      &maxTimeStamp,
+		Interleaved:  &[]bool{true}[0], // Sort events from multiple streams by timestamp
 	}
-
-	var wg sync.WaitGroup
-	chWorker := make(chan workEvent, 3)
-	// Launch workers in background
-	wg.Add(1)
-	go func() {
-		errWorker = a.workerEvents(ctx, &wg, chWorker)
-	}()
-
-	a.appLog.Debugf("Processing %d log streams for events", len(logStreams))
-	for _, l := range logStreams {
-		work := workEvent{
-			groupName:    groupName,
-			streamName:   *l.LogStreamName,
-			minTimeStamp: minTimeStampInMs,
-			maxTimeStamp: maxTimeStampInMs,
+	
+	// Don't use LogStreamNamePrefix as EKS log stream names don't directly contain pod names
+	// Instead, we'll filter by pod name at the application level after parsing the JSON
+	a.appLog.Debugf("Note: Not using LogStreamNamePrefix filter, will filter by pod name in JSON content")
+	
+	// Create paginator for handling large result sets
+	paginator := cloudwatchlogs.NewFilterLogEventsPaginator(a.clientCloudwatchlogs, input)
+	
+	eventCount := 0
+	pageCount := 0
+	filteredEventCount := 0
+	
+	a.appLog.Debugf("Starting FilterLogEvents for group %s with time range %d-%d", groupName, minTimeStamp, maxTimeStamp)
+	if logStreamFilter != "" {
+		a.appLog.Debugf("Will filter events by pod name containing: %s", logStreamFilter)
+	}
+	
+	// Process all pages of results
+	for paginator.HasMorePages() {
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
-		a.appLog.Debugf("Queuing work for stream: %s", *l.LogStreamName)
-		chWorker <- work
-		a.tui.IncNbStreamsScanned()
+		
+		// Rate limit the API call
+		if err := a.eventsRateLimit.Wait(ctx); err != nil {
+			return fmt.Errorf("rate limit wait error: %w", err)
+		}
+		
+		// Get next page of events
+		output, err := paginator.NextPage(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to filter log events: %w", err)
+		}
+		
+		pageCount++
+		a.appLog.Debugf("Processing page %d with %d events", pageCount, len(output.Events))
+		
+		// Update spinner with current progress
+		a.tui.UpdateSpinnerRetrieveLogStreamsWithText(fmt.Sprintf("Processing events... page %d, %d events found", pageCount, eventCount))
+		
+		// Process events from this page
+		for _, event := range output.Events {
+			eventCount++
+			
+			// Parse the log message as fluentDockerLog
+			var lineOfLog fluentDockerLog
+			err := json.Unmarshal([]byte(*event.Message), &lineOfLog)
+			if err != nil {
+				// Log the error but continue processing other events
+				a.appLog.Warnf("Failed to unmarshal log message (skipping): %v. Message: %s", err, *event.Message)
+				continue
+			}
+			
+			// Apply pod name filtering if specified (filter by actual pod name in parsed JSON)
+			if logStreamFilter != "" && !strings.Contains(lineOfLog.Kubernetes.PodName, logStreamFilter) {
+				continue
+			}
+			
+			filteredEventCount++
+			
+			// Convert timestamp and save to database
+			timeT := time.Unix(*event.Timestamp/1000, 0).UTC()
+			err = a.queries.AddLog(ctx, a.profileName, groupName, timeT, 
+				lineOfLog.Kubernetes.PodName, lineOfLog.Kubernetes.ContainerName, 
+				lineOfLog.Kubernetes.NamespaceName, lineOfLog.Log)
+			if err != nil {
+				return fmt.Errorf("failed to add log: %w", err)
+			}
+			
+			// Update spinner periodically to show progress
+			if filteredEventCount%100 == 0 { // Update UI every 100 events to avoid too frequent updates
+				a.tui.UpdateSpinnerRetrieveLogStreamsWithText(fmt.Sprintf("Processing events... %d saved to database", filteredEventCount))
+			}
+		}
 	}
-	close(chWorker)
-	wg.Wait()
-	err = errWorker
-	a.tui.StopSpinnerScanLogStreams()
-	return err
+	
+	a.appLog.Debugf("Completed FilterLogEvents processing: %d total events, %d matching filter, from %d pages", eventCount, filteredEventCount, pageCount)
+	return nil
 }
 
 // GetEvents returns events occured between two dates
@@ -260,38 +229,4 @@ func (a *App) GetEvents(ctx context.Context, profile string, groupName string, p
 		return nil, fmt.Errorf("failed to get logs: %w", err)
 	}
 	return res, nil
-}
-
-// workEvent is a struct to send work to workers
-type workEvent struct {
-	groupName    string
-	streamName   string
-	minTimeStamp int64
-	maxTimeStamp int64
-}
-
-// workerEvents is a function to get events from a log stream
-func (a *App) workerEvents(ctx context.Context, wg *sync.WaitGroup, work <-chan workEvent) error {
-	var errGrp errgroup.Group
-	var currentWorkers atomic.Int32
-	var maxConcurrentWorkers int32 = 3  // Reduce concurrency for SQLite compatibility
-
-	// Set a limit on the errgroup to control concurrency properly
-	errGrp.SetLimit(int(maxConcurrentWorkers))
-
-	for w := range work {
-		// Capture the work item for the closure
-		workItem := w
-		errGrp.Go(func() error {
-			currentWorkers.Add(1)
-			defer currentWorkers.Add(-1)
-			return a.getEvents(ctx, workItem.groupName, workItem.streamName, workItem.minTimeStamp, workItem.maxTimeStamp, "")
-		})
-	}
-	err := errGrp.Wait()
-	wg.Done()
-	if err != nil {
-		return fmt.Errorf("worker error: %w", err)
-	}
-	return nil
 }
