@@ -52,6 +52,12 @@ func (v *TerminalView) UpdateSpinnerScanLogStreams() {
 	v.spinnerScanStreams.UpdateText(fmt.Sprintf("Retrieve events of log streams... %d/%d", v.nbStreamsScanned.Load(), v.nbLogStreamsFound.Load()))
 }
 
+func (v *TerminalView) UpdateSpinnerRetrieveLogStreamsWithText(text string) {
+	if v.spinnerRetrieveStreams != nil {
+		v.spinnerRetrieveStreams.UpdateText(text)
+	}
+}
+
 func (v *TerminalView) StopSpinnerRetrieveLogStreams() {
 	v.spinnerRetrieveStreams.Success("Log streams retrieved")
 }
