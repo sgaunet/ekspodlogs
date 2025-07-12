@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -100,8 +101,29 @@ var reqCmd = &cobra.Command{
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
-		for _, r := range res {
-			fmt.Println(r.NamespaceName, r.PodName, r.Log)
+		
+		if len(res) == 0 {
+			fmt.Println("No logs found for the specified criteria")
+			return
+		}
+
+		if containerName {
+			fmt.Println("Event Time\tContainer Name\tLog")
+			for _, r := range res {
+				fmt.Printf("%s\t%s\t%s\n",
+					r.EventTime.Format("2006-01-02 15:04:05"),
+					strings.TrimSpace(r.ContainerName),
+					strings.TrimSpace(r.Log),
+				)
+			}
+		} else {
+			fmt.Println("Event Time\tLog")
+			for _, r := range res {
+				fmt.Printf("%s\t%s\n",
+					r.EventTime.Format("2006-01-02 15:04:05"),
+					strings.TrimSpace(r.Log),
+				)
+			}
 		}
 	},
 }

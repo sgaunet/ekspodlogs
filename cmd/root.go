@@ -13,12 +13,13 @@ var (
 	s      *sqlite.Storage
 
 	// Flags
-	beginDate  string
-	endDate    string
-	groupName  string
-	ssoProfile string
-	podName    string
-	debug      bool
+	beginDate     string
+	endDate       string
+	groupName     string
+	ssoProfile    string
+	podName       string
+	debug         bool
+	containerName bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -67,6 +68,7 @@ func init() {
 	reqCmd.Flags().StringVarP(&ssoProfile, "profile", "p", "", "SSO profile (not mandatory)")
 	reqCmd.Flags().StringVarP(&podName, "podname", "n", "", "string that have to match with the pod name")
 	reqCmd.Flags().BoolVarP(&debug, "debug", "d", false, "Enable debug logging")
+	reqCmd.Flags().BoolVarP(&containerName, "container-name", "c", false, "Show container name column")
 	rootCmd.AddCommand(reqCmd)
 
 	listGroupsCmd.Flags().StringVarP(&ssoProfile, "profile", "p", "", "SSO profile (not mandatory)")
