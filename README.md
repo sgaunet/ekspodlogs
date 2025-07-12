@@ -94,6 +94,43 @@ $ ekspodlogs req -p dev -n mypodname -b "2021-01-01 00:00:00" -e "2021-01-01 23:
 ...
 ```
 
+### Output Options
+
+The `req` command provides several formatting options:
+
+**Colorized Output (default):**
+```bash
+$ ekspodlogs req -p dev -n mypodname -b "2021-01-01 00:00:00" -e "2021-01-01 23:59:59"
+# Displays logs with color-coded log levels:
+# - INFO/INFORMATION: Blue
+# - WARN/WARNING: Yellow  
+# - ERROR/FATAL/CRITICAL: Red
+```
+
+**Show Container Names:**
+```bash
+$ ekspodlogs req -c -p dev -n mypodname -b "2021-01-01 00:00:00" -e "2021-01-01 23:59:59"
+# Adds container name column to output
+```
+
+**Disable Colors:**
+```bash
+$ ekspodlogs req --no-color -p dev -n mypodname -b "2021-01-01 00:00:00" -e "2021-01-01 23:59:59"
+# Plain text output without colors (useful for scripts or piping)
+```
+
+**Combined Options:**
+```bash
+$ ekspodlogs req -c --no-color -p dev -n mypodname -b "2021-01-01 00:00:00" -e "2021-01-01 23:59:59"
+# Container names without colors
+```
+
+The colorization automatically detects log levels in various formats:
+- Bracketed: `[INFO]`, `[ERROR]`, `[WARN]`
+- Colon format: `INFO:`, `ERROR:`, `WARN:`
+- Structured: `level=info`, `level=error`
+- JSON: `"level":"info"`, `"level":"error"`
+
 ## Dependency
 
 ### Ubuntu/Debian
