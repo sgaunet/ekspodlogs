@@ -11,6 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.48.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.19
 	github.com/dromara/carbon/v2 v2.6.4
+	github.com/gookit/color v1.5.4
 	github.com/mattn/go-sqlite3 v1.14.28
 	github.com/pterm/pterm v0.12.80
 	github.com/sirupsen/logrus v1.9.3
@@ -44,7 +45,6 @@ require (
 	github.com/go-sql-driver/mysql v1.9.2 // indirect
 	github.com/google/cel-go v0.22.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gookit/color v1.5.4 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
